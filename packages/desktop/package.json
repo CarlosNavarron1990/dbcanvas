@@ -1,0 +1,94 @@
+{
+  "name": "@dbcanvas/desktop",
+  "version": "1.0.0",
+  "description": "DBCanvas Desktop - Electron app with dashboard and MCP management",
+  "type": "module",
+  "main": "build/main.js",
+  "scripts": {
+    "build": "tsc",
+    "build:dashboard": "cd dashboard && npm run build",
+    "build:full": "tsc && cd dashboard && npm run build",
+    "start": "electron .",
+    "dashboard": "node build/server.js",
+    "clean": "rm -rf build",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "@dbcanvas/core": "*",
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^20.11.24",
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.3.3"
+  },
+  "build": {
+    "appId": "com.dbcanvas.desktop",
+    "productName": "DBCanvas",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "build/**/*",
+      "dashboard/dist/**/*",
+      "assets/**/*",
+      "node_modules/**/*",
+      "!node_modules/@dbcanvas/core/src",
+      "!**/*.ts",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "../../packages/mcp-server/build",
+        "to": "mcp-server",
+        "filter": ["**/*.js"]
+      },
+      {
+        "from": "../../packages/core/build",
+        "to": "mcp-server/core",
+        "filter": ["**/*.js"]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["universal"]
+        }
+      ],
+      "icon": "assets/icon.icns",
+      "darkModeSupport": true,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Development",
+      "icon": "assets/icon.png"
+    }
+  }
+}

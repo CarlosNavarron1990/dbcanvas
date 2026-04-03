@@ -1,0 +1,33 @@
+node_modules/
+build/
+dist/
+.env
+*.env
+*.sql
+package-lock.json
+
+# Legacy files at root only (not in packages/)
+/src/
+/dashboard/
+/scripts/
+/test_config.js
+/test_sp.ts
+/test_sp_run.ts
+/agents/
+/xambi_global_master_plan.md
+
+# Local DB storage
+.dbcanvas/
+.nexusdb/
+.sql-mcp/
+.npm-cache/
+*.db
+*.db-shm
+*.db-wal
+packages/platform/data/
+
+# OS
+.DS_Store
+
+# Electron build output
+release/

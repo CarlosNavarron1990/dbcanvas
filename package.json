@@ -1,0 +1,39 @@
+{
+  "name": "dbcanvas",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DBCanvas - SQL database inspector for AI IDEs",
+  "author": "XMN",
+  "license": "MIT",
+  "workspaces": [
+    "packages/core",
+    "packages/mcp-server",
+    "packages/desktop",
+    "packages/platform"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dbcanvas/core && npm run build -w @dbcanvas/mcp-server && npm run build -w @dbcanvas/desktop && npm run build -w @dbcanvas/platform",
+    "start:platform": "npm run start -w @dbcanvas/platform",
+    "build:core": "npm run build -w @dbcanvas/core",
+    "build:mcp": "npm run build -w @dbcanvas/core && npm run build -w @dbcanvas/mcp-server",
+    "build:desktop": "npm run build -w @dbcanvas/core && npm run build:full -w @dbcanvas/desktop",
+    "start:mcp": "npm run start -w @dbcanvas/mcp-server",
+    "start:dashboard": "npm run dashboard -w @dbcanvas/desktop",
+    "start:desktop": "npm run start -w @dbcanvas/desktop",
+    "test": "npm test -w @dbcanvas/core && npm test -w @dbcanvas/mcp-server",
+    "format": "prettier --write 'packages/*/src/**/*.{ts,tsx}'",
+    "format:check": "prettier --check 'packages/*/src/**/*.{ts,tsx}'",
+    "clean": "npm run clean -w @dbcanvas/core && npm run clean -w @dbcanvas/mcp-server && npm run clean -w @dbcanvas/desktop"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.58.0",
+    "@typescript-eslint/parser": "^8.58.0",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1"
+  }
+}

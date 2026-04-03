@@ -1,0 +1,26 @@
+{
+  "name": "@dbcanvas/mcp-server",
+  "version": "1.0.0",
+  "description": "MCP Server for SQL database inspection - used by Claude, Cursor, Codex, Antigravity",
+  "type": "module",
+  "main": "build/index.js",
+  "bin": {
+    "dbcanvas-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "test": "vitest run",
+    "clean": "rm -rf build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.0",
+    "@dbcanvas/core": "*",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3",
+    "vitest": "^4.1.2"
+  }
+}

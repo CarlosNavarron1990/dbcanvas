@@ -1,0 +1,35 @@
+{
+  "name": "@dbcanvas/platform",
+  "version": "1.0.0",
+  "description": "DBCanvas License Server, Admin Panel, and Payment Gateway",
+  "type": "module",
+  "main": "build/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/server.js",
+    "dev": "node --watch build/server.js",
+    "clean": "rm -rf build",
+    "seed": "node build/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.0",
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.0",
+    "paypal-rest-sdk": "^1.8.1",
+    "pino": "^10.3.1",
+    "stripe": "^17.0.0",
+    "uuid": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.0",
+    "@types/node": "^20.11.24",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^5.3.3"
+  }
+}
