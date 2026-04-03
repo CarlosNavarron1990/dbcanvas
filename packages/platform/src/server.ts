@@ -16,7 +16,7 @@ import paymentRoutes from './routes/payments.js';
 import { startCron } from './cron.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = parseInt(process.env.PLATFORM_PORT || '4000');
+const PORT = parseInt(process.env.PORT || process.env.PLATFORM_PORT || '4000');
 
 const app = express();
 
@@ -46,7 +46,8 @@ app.use((_req, res) => {
   res.sendFile(path.join(adminDist, 'index.html'));
 });
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`DBCanvas Platform running at http://127.0.0.1:${PORT}`);
+const HOST = process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1';
+app.listen(PORT, HOST, () => {
+  console.log(`DBCanvas Platform running at http://${HOST}:${PORT}`);
   startCron();
 });
