@@ -1,7 +1,13 @@
-import dotenv from 'dotenv';
+import fs from 'fs';
 import { fileURLToPath as furl } from 'url';
 import { dirname as dn, join as pjoin } from 'path';
-dotenv.config({ path: pjoin(dn(furl(import.meta.url)), '..', '.env') });
+
+// Load .env only for local dev — Railway injects env vars directly
+const envPath = pjoin(dn(furl(import.meta.url)), '..', '.env');
+if (fs.existsSync(envPath)) {
+  const dotenv = await import('dotenv');
+  dotenv.config({ path: envPath });
+}
 
 import express from 'express';
 import cors from 'cors';
