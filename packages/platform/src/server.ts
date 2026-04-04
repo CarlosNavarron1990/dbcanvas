@@ -34,6 +34,17 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(cors());
 app.use(express.json());
 
+// Fix Express 5 res.json() mangling — override globally
+app.use((_req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = ((data: any) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(data));
+    return res;
+  }) as any;
+  next();
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/license', licenseRoutes);
