@@ -37,16 +37,59 @@ router.get('/stats', async (_req: Request, res: Response) => {
   });
 });
 
-/** List all users */
+/** List all users with full license details */
 router.get('/users', async (_req: Request, res: Response) => {
   const users = await query(`
     SELECT u.id, u.email, u.name, u.role, u.created_at,
-      l.tier, l.status as license_status, l.license_key
+      l.tier, l.status as license_status, l.license_key, l.expires_at,
+      l.stripe_subscription_id,
+      CASE
+        WHEN l.license_key LIKE 'DBC-TRIAL%' THEN 'trial'
+        WHEN l.stripe_subscription_id IS NOT NULL THEN 'paid'
+        ELSE 'free'
+      END as license_type,
+      CASE
+        WHEN l.expires_at IS NOT NULL AND l.expires_at > NOW() THEN
+          EXTRACT(DAY FROM l.expires_at - NOW())::int
+        ELSE NULL
+      END as days_remaining,
+      (SELECT COUNT(*) FROM license_activations la WHERE la.license_id = l.id) as active_machines
     FROM users u
     LEFT JOIN licenses l ON u.id = l.user_id AND l.status = 'active'
     ORDER BY u.created_at DESC
   `);
   res.json(users);
+});
+
+/** Get user details with activations */
+router.get('/users/:id', async (req: Request, res: Response) => {
+  const userId = req.params.id;
+  const user = await queryOne(`
+    SELECT u.*, l.license_key, l.tier, l.status as license_status, l.expires_at,
+      l.stripe_subscription_id, l.id as license_id, l.created_at as license_created
+    FROM users u
+    LEFT JOIN licenses l ON u.id = l.user_id AND l.status = 'active'
+    WHERE u.id = $1
+  `, [userId]);
+
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  const activations = user.license_id ? await query(
+    'SELECT machine_id, hostname, activated_at, last_seen FROM license_activations WHERE license_id = $1 ORDER BY last_seen DESC',
+    [user.license_id]
+  ) : [];
+
+  const usageCount = (await queryOne(
+    'SELECT COUNT(*) as c FROM usage_events ue JOIN licenses l ON ue.license_id = l.id WHERE l.user_id = $1',
+    [userId]
+  ))?.c || 0;
+
+  const payments = await query(
+    'SELECT id, amount, currency, tier, status, created_at FROM payments WHERE user_id = $1 ORDER BY created_at DESC',
+    [userId]
+  );
+
+  res.json({ ...user, activations, usage_count: usageCount, payments });
 });
 
 /** List all payments */
@@ -136,6 +179,44 @@ router.get('/conversion', async (_req: Request, res: Response) => {
       regsLast30,
     },
   });
+});
+
+/** Admin: Grant/revoke tier to a user (no payment required) */
+router.post('/grant', async (req: Request, res: Response) => {
+  const { userId, tier } = req.body;
+  if (!userId || !tier) { res.status(400).json({ error: 'userId and tier required' }); return; }
+
+  const validTiers = ['free', 'pro', 'team', 'enterprise'];
+  if (!validTiers.includes(tier)) { res.status(400).json({ error: 'Invalid tier' }); return; }
+
+  // Check if user exists
+  const user = await queryOne('SELECT id FROM users WHERE id = $1', [userId]);
+  if (!user) { res.status(404).json({ error: 'User not found' }); return; }
+
+  // Get existing license
+  const license = await queryOne("SELECT id, license_key FROM licenses WHERE user_id = $1 AND status = 'active'", [userId]);
+
+  if (tier === 'free') {
+    // Downgrade: expire the current license
+    if (license) {
+      await execute("UPDATE licenses SET tier = 'free', expires_at = NULL, updated_at = NOW() WHERE id = $1", [license.id]);
+    }
+    res.json({ success: true, message: `User downgraded to FREE` });
+  } else {
+    // Upgrade: update existing or create new license
+    if (license) {
+      await execute("UPDATE licenses SET tier = $1, status = 'active', expires_at = NULL, updated_at = NOW() WHERE id = $2", [tier, license.id]);
+      res.json({ success: true, message: `User upgraded to ${tier.toUpperCase()}`, licenseKey: license.license_key });
+    } else {
+      const { v4: uuid } = await import('uuid');
+      const licenseKey = `DBC-${tier.toUpperCase()}-${uuid().substring(0, 8).toUpperCase()}`;
+      await execute(
+        'INSERT INTO licenses (id, user_id, license_key, tier, status) VALUES ($1, $2, $3, $4, $5)',
+        [uuid(), userId, licenseKey, tier, 'active']
+      );
+      res.json({ success: true, message: `User granted ${tier.toUpperCase()}`, licenseKey });
+    }
+  }
 });
 
 export default router;

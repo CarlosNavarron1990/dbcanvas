@@ -107,30 +107,120 @@ function renderStats(s) {
   </tbody></table>`;
 }
 
+function tierLabel(u) {
+  if (u.license_type === 'trial') return `${(u.tier||'free').toUpperCase()}-TRIAL`;
+  if (u.license_type === 'paid') return `${(u.tier||'free').toUpperCase()} (PAID)`;
+  return (u.tier||'free').toUpperCase();
+}
+
+function expiryLabel(u) {
+  if (!u.expires_at) return u.stripe_subscription_id ? 'Active (recurring)' : '-';
+  const days = u.days_remaining;
+  if (days === null || days < 0) return '<span style="color:var(--red)">Expired</span>';
+  if (days <= 3) return `<span style="color:var(--red)">${days}d left</span>`;
+  if (days <= 7) return `<span style="color:#f59e0b">${days}d left</span>`;
+  return `${days}d left`;
+}
+
 function renderUsers(users) {
   return `<h2 class="section-title">Users (${users.length})</h2>
-  <table><thead><tr><th>Email</th><th>Name</th><th>Tier</th><th>Status</th><th>Joined</th></tr></thead><tbody>
+  <table><thead><tr><th>Email</th><th>Name</th><th>Plan</th><th>Type</th><th>Expires</th><th>Devices</th><th>Status</th><th>Joined</th><th></th></tr></thead><tbody>
   ${users.map(u => `<tr>
-    <td>${u.email}</td><td>${u.name||'-'}</td>
-    <td><span class="badge badge-${u.tier||'free'}">${(u.tier||'free').toUpperCase()}</span></td>
-    <td><span class="badge badge-${u.license_status||'active'}">${(u.license_status||'none').toUpperCase()}</span></td>
+    <td>${u.email}</td>
+    <td>${u.name||'-'}</td>
+    <td><span class="badge badge-${u.tier||'free'}">${tierLabel(u)}</span></td>
+    <td>${u.license_type === 'trial' ? '<span style="color:#f59e0b">Trial</span>' : u.license_type === 'paid' ? '<span style="color:var(--green)">Paid</span>' : '<span style="color:var(--muted)">Free</span>'}</td>
+    <td>${expiryLabel(u)}</td>
+    <td>${u.active_machines || 0}</td>
+    <td><span class="badge badge-${u.license_status||'active'}">${(u.license_status||'-').toUpperCase()}</span></td>
     <td>${u.created_at?.substring(0,10)||'-'}</td>
+    <td><button class="btn" style="padding:4px 8px;font-size:10px" onclick="viewUser('${u.id}')">Details</button></td>
   </tr>`).join('')}
   </tbody></table>`;
 }
 
 function renderLicenses(licenses) {
   return `<h2 class="section-title">Licenses (${licenses.length})</h2>
-  <table><thead><tr><th>Key</th><th>User</th><th>Tier</th><th>Status</th><th>Machines</th><th>Created</th></tr></thead><tbody>
-  ${licenses.map(l => `<tr>
+  <table><thead><tr><th>Key</th><th>User</th><th>Tier</th><th>Type</th><th>Expires</th><th>Status</th><th>Machines</th><th>Created</th></tr></thead><tbody>
+  ${licenses.map(l => {
+    const isTrial = l.license_key?.startsWith('DBC-TRIAL');
+    const isPaid = !!l.stripe_subscription_id;
+    const typeLabel = isTrial ? '<span style="color:#f59e0b">Trial</span>' : isPaid ? '<span style="color:var(--green)">Paid</span>' : '<span style="color:var(--muted)">Manual</span>';
+    const expiry = l.expires_at ? new Date(l.expires_at).toLocaleDateString() : (isPaid ? 'Recurring' : 'Never');
+    return `<tr>
     <td style="font-family:monospace;font-size:11px">${l.license_key}</td>
     <td>${l.email}</td>
     <td><span class="badge badge-${l.tier}">${l.tier.toUpperCase()}</span></td>
+    <td>${typeLabel}</td>
+    <td>${expiry}</td>
     <td><span class="badge badge-${l.status}">${l.status.toUpperCase()}</span></td>
     <td>${l.active_machines}</td>
     <td>${l.created_at?.substring(0,10)||'-'}</td>
-  </tr>`).join('')}
+  </tr>`;
+  }).join('')}
   </tbody></table>`;
+}
+
+// User detail view with grant/revoke
+async function viewUser(userId) {
+  const data = await api('/api/admin/users/' + userId);
+  const isTrial = data.license_key?.startsWith('DBC-TRIAL');
+  const el = document.querySelector('.main');
+  el.innerHTML = `
+    <button class="btn" onclick="currentView='users';render()" style="margin-bottom:20px">&larr; Back to Users</button>
+    <h2 class="section-title">${data.name || data.email}</h2>
+    <div class="stats">
+      <div class="stat-card"><div class="stat-value">${data.email}</div><div class="stat-label">Email</div></div>
+      <div class="stat-card"><div class="stat-value">${(data.tier||'free').toUpperCase()}${isTrial?' (TRIAL)':''}</div><div class="stat-label">Plan</div></div>
+      <div class="stat-card"><div class="stat-value">${data.role}</div><div class="stat-label">Role</div></div>
+      <div class="stat-card"><div class="stat-value">${data.usage_count}</div><div class="stat-label">API Calls</div></div>
+    </div>
+
+    <h3 style="margin:20px 0 10px">License: ${data.license_key || 'None'}</h3>
+    <div style="display:flex;gap:8px;margin-bottom:20px">
+      <button class="btn" onclick="grantPro('${data.id}')" style="background:var(--green)">Grant PRO (no expiry)</button>
+      <button class="btn" onclick="grantTeam('${data.id}')" style="background:#f59e0b">Grant TEAM</button>
+      <button class="btn" onclick="revokePro('${data.id}')" style="background:var(--red)">Downgrade to FREE</button>
+    </div>
+
+    <h3 style="margin:20px 0 10px">Devices (${data.activations.length})</h3>
+    ${data.activations.length > 0 ? `<table><thead><tr><th>Machine ID</th><th>Hostname</th><th>Activated</th><th>Last Seen</th></tr></thead><tbody>
+    ${data.activations.map(a => `<tr>
+      <td style="font-family:monospace;font-size:11px">${a.machine_id}</td>
+      <td>${a.hostname||'-'}</td>
+      <td>${a.activated_at?.substring(0,16)||'-'}</td>
+      <td>${a.last_seen?.substring(0,16)||'-'}</td>
+    </tr>`).join('')}
+    </tbody></table>` : '<p style="color:var(--muted)">No devices activated yet.</p>'}
+
+    <h3 style="margin:20px 0 10px">Payments (${data.payments.length})</h3>
+    ${data.payments.length > 0 ? `<table><thead><tr><th>Amount</th><th>Tier</th><th>Status</th><th>Date</th></tr></thead><tbody>
+    ${data.payments.map(p => `<tr>
+      <td>$${(p.amount/100).toFixed(2)}</td>
+      <td>${p.tier}</td>
+      <td>${p.status}</td>
+      <td>${p.created_at?.substring(0,10)||'-'}</td>
+    </tr>`).join('')}
+    </tbody></table>` : '<p style="color:var(--muted)">No payments yet.</p>'}
+  `;
+}
+
+async function grantPro(userId) {
+  if (!confirm('Grant PRO license to this user (no expiry)?')) return;
+  await api('/api/admin/grant', { method: 'POST', body: JSON.stringify({ userId, tier: 'pro' }) });
+  alert('PRO granted!'); viewUser(userId);
+}
+
+async function grantTeam(userId) {
+  if (!confirm('Grant TEAM license to this user?')) return;
+  await api('/api/admin/grant', { method: 'POST', body: JSON.stringify({ userId, tier: 'team' }) });
+  alert('TEAM granted!'); viewUser(userId);
+}
+
+async function revokePro(userId) {
+  if (!confirm('Downgrade this user to FREE?')) return;
+  await api('/api/admin/grant', { method: 'POST', body: JSON.stringify({ userId, tier: 'free' }) });
+  alert('Downgraded to FREE.'); viewUser(userId);
 }
 
 async function renderUsage() {
