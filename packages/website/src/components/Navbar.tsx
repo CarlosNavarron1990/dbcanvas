@@ -20,8 +20,7 @@ const Navbar: React.FC = () => {
         </button>
         {logged ? (
           <>
-            <Link to="/dashboard">{t('dashboard')}</Link>
-            <button className="nav-btn-outline" onClick={logout}>{t('logout')}</button>
+            <Link to="/account" className="nav-btn-outline">{lang === 'es' ? 'Mi Cuenta' : 'Account'}</Link>
           </>
         ) : (
           <>

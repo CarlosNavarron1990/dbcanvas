@@ -10,22 +10,29 @@ import Dashboard from './pages/Dashboard';
 import CheckoutSuccess from './pages/CheckoutSuccess';
 import DeviceAuth from './pages/DeviceAuth';
 import AuthCallback from './pages/AuthCallback';
+import Account from './pages/Account';
 
-const App: React.FC = () => (
-  <>
-    <Navbar />
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/pricing" element={<Pricing />} />
-      <Route path="/download" element={<Download />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/checkout/success" element={<CheckoutSuccess />} />
-      <Route path="/auth/device" element={<DeviceAuth />} />
-      <Route path="/auth/callback" element={<AuthCallback />} />
-    </Routes>
-  </>
-);
+const App: React.FC = () => {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '';
+  const isAccountPage = path.startsWith('/account');
+
+  return (
+    <>
+      {!isAccountPage && <Navbar />}
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/download" element={<Download />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/dashboard" element={<Account />} />
+        <Route path="/account" element={<Account />} />
+        <Route path="/checkout/success" element={<CheckoutSuccess />} />
+        <Route path="/auth/device" element={<DeviceAuth />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+      </Routes>
+    </>
+  );
+};
 
 export default App;

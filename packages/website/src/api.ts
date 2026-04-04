@@ -67,3 +67,15 @@ export async function cancelSubscription() {
 export async function getPayPalConfig() {
   return apiFetch('/api/payments/config');
 }
+
+// Account
+export async function getProfile() { return apiFetch('/api/account/profile'); }
+export async function updateProfile(data: { name?: string }) {
+  return apiFetch('/api/account/profile', { method: 'PATCH', body: JSON.stringify(data) });
+}
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return apiFetch('/api/account/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+}
+export async function getBilling() { return apiFetch('/api/account/billing'); }
+export async function getLicense() { return apiFetch('/api/account/license'); }
+export async function getUsageStats() { return apiFetch('/api/account/usage'); }

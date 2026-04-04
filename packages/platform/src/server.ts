@@ -20,6 +20,7 @@ import adminRoutes from './routes/admin.js';
 import usageRoutes from './routes/usage.js';
 import paymentRoutes from './routes/payments.js';
 import deviceAuthRoutes from './routes/device-auth.js';
+import accountRoutes from './routes/account.js';
 import { startCron } from './cron.js';
 import { initDb, queryOne, execute } from './db.js';
 
@@ -72,6 +73,7 @@ app.post('/api/bootstrap-admin', async (req, res) => {
   res.end(JSON.stringify({ success: true, message: `${email} is now admin` }));
 });
 app.use('/api/auth/device', deviceAuthRoutes);
+app.use('/api/account', accountRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
