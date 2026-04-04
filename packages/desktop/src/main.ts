@@ -5,6 +5,7 @@ import { registerIpcHandlers } from './ipc-handlers.js';
 import { startServer } from './server.js';
 import { createAppMenu } from './menu.js';
 import { createTray, destroyTray } from './tray.js';
+import { registerDeviceAuthHandlers } from './device-auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +16,7 @@ let expressServer: ReturnType<typeof startServer> | null = null;
 async function createWindow() {
   // Register IPC handlers before creating window
   registerIpcHandlers();
+  registerDeviceAuthHandlers();
 
   mainWindow = new BrowserWindow({
     width: 1400,

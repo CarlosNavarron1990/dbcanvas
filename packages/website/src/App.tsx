@@ -8,6 +8,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import CheckoutSuccess from './pages/CheckoutSuccess';
+import DeviceAuth from './pages/DeviceAuth';
 
 const App: React.FC = () => (
   <>
@@ -20,6 +21,7 @@ const App: React.FC = () => (
       <Route path="/register" element={<Register />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
+      <Route path="/auth/device" element={<DeviceAuth />} />
     </Routes>
   </>
 );

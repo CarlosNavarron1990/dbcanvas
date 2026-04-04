@@ -19,6 +19,7 @@ import stripeRoutes from './routes/stripe.js';
 import adminRoutes from './routes/admin.js';
 import usageRoutes from './routes/usage.js';
 import paymentRoutes from './routes/payments.js';
+import deviceAuthRoutes from './routes/device-auth.js';
 import { startCron } from './cron.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -39,6 +40,7 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/usage', usageRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/auth/device', deviceAuthRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

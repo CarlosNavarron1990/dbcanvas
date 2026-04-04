@@ -51,6 +51,12 @@ contextBridge.exposeInMainWorld('dbcanvas', {
   registerAllIdes: () =>
     ipcRenderer.invoke('dbcanvas:register-all-ides'),
 
+  // Auth
+  getSession: () => ipcRenderer.invoke('dbcanvas:auth-get-session'),
+  startLogin: () => ipcRenderer.invoke('dbcanvas:auth-start-login'),
+  pollAuth: (deviceCode: string) => ipcRenderer.invoke('dbcanvas:auth-poll', deviceCode),
+  logout: () => ipcRenderer.invoke('dbcanvas:auth-logout'),
+
   // Events from main process
   onNotification: (callback: (data: { type: string; name: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { type: string; name: string }) => callback(data);

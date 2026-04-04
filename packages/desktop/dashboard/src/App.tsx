@@ -10,13 +10,17 @@ import SettingsView from './components/SettingsView';
 import CommandPalette from './components/CommandPalette';
 import NotificationToast from './components/NotificationToast';
 import Onboarding from './components/Onboarding';
+import LoginScreen from './components/LoginScreen';
 import './index.css';
 
 const POLL_INTERVAL = 10_000; // 10 seconds
+const isElectron = typeof window !== 'undefined' && !!(window as any).dbcanvas?.startLogin;
 
 const App: React.FC = () => {
   const { viewMode, selectedNode, theme, fetchGraph, fetchProjects, fetchStatus, selectNode, setActiveTab, setLastSignal } = useStore();
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dbcanvas-onboarded'));
+  const [showLogin, setShowLogin] = useState(() => isElectron && !localStorage.getItem('dbcanvas-session'));
+  const [, setSession] = useState<any>(null);
   const lastNodeCount = useRef(0);
 
   useEffect(() => {
@@ -71,6 +75,19 @@ const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  if (showLogin) {
+    return <LoginScreen
+      onLogin={(s) => {
+        setSession(s);
+        localStorage.setItem('dbcanvas-session', JSON.stringify(s));
+        setShowLogin(false);
+      }}
+      onSkip={() => {
+        setShowLogin(false);
+      }}
+    />;
+  }
 
   if (showOnboarding) {
     return <Onboarding onComplete={() => setShowOnboarding(false)} />;
