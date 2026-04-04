@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { login } from '../api';
 import { useI18n } from '../useI18n';
+import OAuthButtons from '../components/OAuthButtons';
 
 const Login: React.FC = () => {
   const { t } = useI18n();
@@ -24,6 +25,10 @@ const Login: React.FC = () => {
         <h2>{t('welcomeBack')}</h2>
         <p className="auth-sub">{t('signInSub')}</p>
         {error && <div className="auth-error">{error}</div>}
+
+        <OAuthButtons />
+        <div className="auth-divider"><span>or</span></div>
+
         <input type="email" placeholder={t('email')} value={email} onChange={e => setEmail(e.target.value)} required />
         <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required />
         <button type="submit" className="btn btn-primary btn-full" disabled={loading}>{loading ? t('signingIn') : t('signIn')}</button>

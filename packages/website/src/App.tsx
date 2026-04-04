@@ -9,6 +9,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import CheckoutSuccess from './pages/CheckoutSuccess';
 import DeviceAuth from './pages/DeviceAuth';
+import AuthCallback from './pages/AuthCallback';
 
 const App: React.FC = () => (
   <>
@@ -22,6 +23,7 @@ const App: React.FC = () => (
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/checkout/success" element={<CheckoutSuccess />} />
       <Route path="/auth/device" element={<DeviceAuth />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
     </Routes>
   </>
 );

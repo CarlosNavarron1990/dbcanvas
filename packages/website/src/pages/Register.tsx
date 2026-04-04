@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { register } from '../api';
 import { useI18n } from '../useI18n';
+import OAuthButtons from '../components/OAuthButtons';
 
 const Register: React.FC = () => {
   const { t } = useI18n();
@@ -25,6 +26,10 @@ const Register: React.FC = () => {
         <h2>{t('createAccount')}</h2>
         <p className="auth-sub">{t('createSub')}</p>
         {error && <div className="auth-error">{error}</div>}
+
+        <OAuthButtons />
+        <div className="auth-divider"><span>or</span></div>
+
         <input type="text" placeholder={t('fullName')} value={name} onChange={e => setName(e.target.value)} />
         <input type="email" placeholder={t('email')} value={email} onChange={e => setEmail(e.target.value)} required />
         <input type="password" placeholder={t('password')} value={password} onChange={e => setPassword(e.target.value)} required minLength={6} />
