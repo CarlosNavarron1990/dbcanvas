@@ -21,6 +21,7 @@ import usageRoutes from './routes/usage.js';
 import paymentRoutes from './routes/payments.js';
 import deviceAuthRoutes from './routes/device-auth.js';
 import { startCron } from './cron.js';
+import { getDb } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || process.env.PLATFORM_PORT || '4000');
