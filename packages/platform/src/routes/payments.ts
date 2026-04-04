@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuid } from 'uuid';
-import { getDb } from '../db.js';
+import { queryOne, execute } from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { TIERS } from '../tiers.js';
 
@@ -89,7 +89,6 @@ router.post('/create-subscription', authMiddleware, async (req: Request, res: Re
 /** PayPal webhook — handles subscription events */
 router.post('/webhook', async (req: Request, res: Response) => {
   const event = req.body;
-  const db = getDb();
 
   try {
     switch (event.event_type) {
@@ -99,21 +98,21 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const tier = sub.plan_id === process.env.PAYPAL_TEAM_PLAN_ID ? 'team' : 'pro';
 
         if (userId) {
-          const license = db.prepare('SELECT * FROM licenses WHERE user_id = ? AND status = ?').get(userId, 'active') as any;
+          const license = await queryOne('SELECT * FROM licenses WHERE user_id = $1 AND status = $2', [userId, 'active']);
           if (license) {
-            db.prepare("UPDATE licenses SET tier = ?, status = 'active', expires_at = NULL, updated_at = datetime('now') WHERE id = ?")
-              .run(tier, license.id);
+            await execute("UPDATE licenses SET tier = $1, status = 'active', expires_at = NULL, updated_at = NOW() WHERE id = $2",
+              [tier, license.id]);
             // Store PayPal subscription ID in stripe_subscription_id field (reusing column)
-            db.prepare("UPDATE licenses SET stripe_subscription_id = ? WHERE id = ?")
-              .run(sub.id, license.id);
+            await execute("UPDATE licenses SET stripe_subscription_id = $1 WHERE id = $2",
+              [sub.id, license.id]);
           } else {
             const licenseKey = `DBC-${tier.toUpperCase()}-${uuid().substring(0, 8).toUpperCase()}`;
-            db.prepare('INSERT INTO licenses (id, user_id, license_key, tier, stripe_subscription_id) VALUES (?, ?, ?, ?, ?)')
-              .run(uuid(), userId, licenseKey, tier, sub.id);
+            await execute('INSERT INTO licenses (id, user_id, license_key, tier, stripe_subscription_id) VALUES ($1, $2, $3, $4, $5)',
+              [uuid(), userId, licenseKey, tier, sub.id]);
           }
 
-          db.prepare('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES (?, ?, ?, ?, ?, ?)')
-            .run(uuid(), userId, sub.id, tier === 'team' ? 4900 : 1900, tier, 'completed');
+          await execute('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES ($1, $2, $3, $4, $5, $6)',
+            [uuid(), userId, sub.id, tier === 'team' ? 4900 : 1900, tier, 'completed']);
         }
         break;
       }
@@ -122,8 +121,8 @@ router.post('/webhook', async (req: Request, res: Response) => {
       case 'BILLING.SUBSCRIPTION.SUSPENDED':
       case 'BILLING.SUBSCRIPTION.EXPIRED': {
         const sub = event.resource;
-        db.prepare("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = datetime('now') WHERE stripe_subscription_id = ?")
-          .run(sub.id);
+        await execute("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = NOW() WHERE stripe_subscription_id = $1",
+          [sub.id]);
         break;
       }
 
@@ -131,10 +130,10 @@ router.post('/webhook', async (req: Request, res: Response) => {
         const sale = event.resource;
         const subId = sale.billing_agreement_id;
         if (subId) {
-          const license = db.prepare('SELECT user_id, tier FROM licenses WHERE stripe_subscription_id = ?').get(subId) as any;
+          const license = await queryOne('SELECT user_id, tier FROM licenses WHERE stripe_subscription_id = $1', [subId]);
           if (license) {
-            db.prepare('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES (?, ?, ?, ?, ?, ?)')
-              .run(uuid(), license.user_id, sale.id, Math.round(parseFloat(sale.amount.total) * 100), license.tier, 'completed');
+            await execute('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES ($1, $2, $3, $4, $5, $6)',
+              [uuid(), license.user_id, sale.id, Math.round(parseFloat(sale.amount.total) * 100), license.tier, 'completed']);
           }
         }
         break;
@@ -151,7 +150,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
 router.post('/activate', authMiddleware, async (req: Request, res: Response) => {
   try {
     const { subscriptionId, tier } = req.body;
-    const db = getDb();
 
     // Verify subscription is active with PayPal
     const token = await getPayPalToken();
@@ -161,14 +159,14 @@ router.post('/activate', authMiddleware, async (req: Request, res: Response) => 
     const sub = await response.json() as any;
 
     if (sub.status === 'ACTIVE' || sub.status === 'APPROVED') {
-      const license = db.prepare('SELECT * FROM licenses WHERE user_id = ? AND status = ?').get(req.user!.id, 'active') as any;
+      const license = await queryOne('SELECT * FROM licenses WHERE user_id = $1 AND status = $2', [req.user!.id, 'active']);
       if (license) {
-        db.prepare("UPDATE licenses SET tier = ?, status = 'active', expires_at = NULL, stripe_subscription_id = ?, updated_at = datetime('now') WHERE id = ?")
-          .run(tier, subscriptionId, license.id);
+        await execute("UPDATE licenses SET tier = $1, status = 'active', expires_at = NULL, stripe_subscription_id = $2, updated_at = NOW() WHERE id = $3",
+          [tier, subscriptionId, license.id]);
       }
 
-      db.prepare('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(uuid(), req.user!.id, subscriptionId, tier === 'team' ? 4900 : 1900, tier, 'completed');
+      await execute('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES ($1, $2, $3, $4, $5, $6)',
+        [uuid(), req.user!.id, subscriptionId, tier === 'team' ? 4900 : 1900, tier, 'completed']);
 
       res.json({ success: true, tier });
     } else {
@@ -182,8 +180,7 @@ router.post('/activate', authMiddleware, async (req: Request, res: Response) => 
 /** Cancel subscription */
 router.post('/cancel', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const db = getDb();
-    const license = db.prepare('SELECT stripe_subscription_id FROM licenses WHERE user_id = ? AND status = ?').get(req.user!.id, 'active') as any;
+    const license = await queryOne('SELECT stripe_subscription_id FROM licenses WHERE user_id = $1 AND status = $2', [req.user!.id, 'active']);
 
     if (!license?.stripe_subscription_id) {
       res.status(400).json({ error: 'No active subscription' });
@@ -197,8 +194,8 @@ router.post('/cancel', authMiddleware, async (req: Request, res: Response) => {
       body: JSON.stringify({ reason: 'User requested cancellation' }),
     });
 
-    db.prepare("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = datetime('now') WHERE user_id = ? AND status = 'active'")
-      .run(req.user!.id);
+    await execute("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = NOW() WHERE user_id = $1 AND status = 'active'",
+      [req.user!.id]);
 
     res.json({ success: true });
   } catch (err: any) {

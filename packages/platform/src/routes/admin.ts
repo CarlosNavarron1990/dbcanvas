@@ -1,109 +1,102 @@
 import { Router, Request, Response } from 'express';
-import { getDb } from '../db.js';
+import { query, queryOne } from '../db.js';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authMiddleware, adminMiddleware);
 
 /** Dashboard stats */
-router.get('/stats', (_req: Request, res: Response) => {
-  const db = getDb();
+router.get('/stats', async (_req: Request, res: Response) => {
+  const totalUsers = (await queryOne('SELECT COUNT(*) as c FROM users'))!.c;
+  const totalLicenses = (await queryOne('SELECT COUNT(*) as c FROM licenses'))!.c;
+  const activePro = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE tier = 'pro' AND status = 'active'"))!.c;
+  const activeTeam = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE tier = 'team' AND status = 'active'"))!.c;
+  const activeEnterprise = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE tier = 'enterprise' AND status = 'active'"))!.c;
 
-  const totalUsers = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any).c;
-  const totalLicenses = (db.prepare('SELECT COUNT(*) as c FROM licenses').get() as any).c;
-  const activePro = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE tier = 'pro' AND status = 'active'").get() as any).c;
-  const activeTeam = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE tier = 'team' AND status = 'active'").get() as any).c;
-  const activeEnterprise = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE tier = 'enterprise' AND status = 'active'").get() as any).c;
-
-  const revenue = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'").get() as any;
-  const revenueThisMonth = db.prepare(`
+  const revenue = await queryOne("SELECT COALESCE(SUM(amount), 0) as total FROM payments WHERE status = 'completed'");
+  const revenueThisMonth = await queryOne(`
     SELECT COALESCE(SUM(amount), 0) as total FROM payments
-    WHERE status = 'completed' AND created_at >= datetime('now', 'start of month')
-  `).get() as any;
+    WHERE status = 'completed' AND created_at >= DATE_TRUNC('month', NOW())
+  `);
 
-  const usageToday = (db.prepare(`
-    SELECT COUNT(*) as c FROM usage_events WHERE timestamp >= datetime('now', 'start of day')
-  `).get() as any).c;
+  const usageToday = (await queryOne(`
+    SELECT COUNT(*) as c FROM usage_events WHERE timestamp >= DATE_TRUNC('day', NOW())
+  `))!.c;
 
-  const topTools = db.prepare(`
+  const topTools = await query(`
     SELECT tool_name, COUNT(*) as count FROM usage_events
-    WHERE timestamp >= datetime('now', '-30 days')
+    WHERE timestamp >= NOW() - INTERVAL '30 days'
     GROUP BY tool_name ORDER BY count DESC LIMIT 10
-  `).all();
+  `);
 
   res.json({
     users: { total: totalUsers },
     licenses: { total: totalLicenses, pro: activePro, team: activeTeam, enterprise: activeEnterprise },
-    revenue: { total: revenue.total / 100, thisMonth: revenueThisMonth.total / 100 },
+    revenue: { total: revenue!.total / 100, thisMonth: revenueThisMonth!.total / 100 },
     usage: { today: usageToday, topTools },
   });
 });
 
 /** List all users */
-router.get('/users', (_req: Request, res: Response) => {
-  const db = getDb();
-  const users = db.prepare(`
+router.get('/users', async (_req: Request, res: Response) => {
+  const users = await query(`
     SELECT u.id, u.email, u.name, u.role, u.created_at,
       l.tier, l.status as license_status, l.license_key
     FROM users u
     LEFT JOIN licenses l ON u.id = l.user_id AND l.status = 'active'
     ORDER BY u.created_at DESC
-  `).all();
+  `);
   res.json(users);
 });
 
 /** List all payments */
-router.get('/payments', (_req: Request, res: Response) => {
-  const db = getDb();
-  const payments = db.prepare(`
+router.get('/payments', async (_req: Request, res: Response) => {
+  const payments = await query(`
     SELECT p.*, u.email FROM payments p
     JOIN users u ON p.user_id = u.id
     ORDER BY p.created_at DESC LIMIT 100
-  `).all();
+  `);
   res.json(payments);
 });
 
 /** Usage analytics */
-router.get('/usage', (req: Request, res: Response) => {
-  const db = getDb();
+router.get('/usage', async (req: Request, res: Response) => {
   const days = parseInt(req.query.days as string) || 30;
 
-  const daily = db.prepare(`
-    SELECT date(timestamp) as day, COUNT(*) as count
+  const daily = await query(`
+    SELECT DATE(timestamp) as day, COUNT(*) as count
     FROM usage_events
-    WHERE timestamp >= datetime('now', '-${days} days')
-    GROUP BY date(timestamp)
+    WHERE timestamp >= NOW() - INTERVAL '${days} days'
+    GROUP BY DATE(timestamp)
     ORDER BY day
-  `).all();
+  `);
 
-  const byTool = db.prepare(`
+  const byTool = await query(`
     SELECT tool_name, COUNT(*) as count
     FROM usage_events
-    WHERE timestamp >= datetime('now', '-${days} days')
+    WHERE timestamp >= NOW() - INTERVAL '${days} days'
     GROUP BY tool_name ORDER BY count DESC
-  `).all();
+  `);
 
-  const byLicense = db.prepare(`
+  const byLicense = await query(`
     SELECT l.tier, COUNT(*) as count
     FROM usage_events ue
     LEFT JOIN licenses l ON ue.license_id = l.id
-    WHERE ue.timestamp >= datetime('now', '-${days} days')
+    WHERE ue.timestamp >= NOW() - INTERVAL '${days} days'
     GROUP BY l.tier
-  `).all();
+  `);
 
   res.json({ daily, byTool, byLicense });
 });
 
 /** Conversion funnel metrics */
-router.get('/conversion', (_req: Request, res: Response) => {
-  const db = getDb();
-
-  const totalRegistered = (db.prepare('SELECT COUNT(*) as c FROM users').get() as any).c;
-  const withTrial = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE license_key LIKE 'DBC-TRIAL%'").get() as any).c;
-  const paidPro = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE tier = 'pro' AND status = 'active' AND stripe_subscription_id IS NOT NULL").get() as any).c;
-  const paidTeam = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE tier = 'team' AND status = 'active' AND stripe_subscription_id IS NOT NULL").get() as any).c;
-  const cancelled = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE status = 'cancelled'").get() as any).c;
-  const expired = (db.prepare("SELECT COUNT(*) as c FROM licenses WHERE status = 'expired'").get() as any).c;
+router.get('/conversion', async (_req: Request, res: Response) => {
+  const totalRegistered = (await queryOne('SELECT COUNT(*) as c FROM users'))!.c;
+  const withTrial = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE license_key LIKE 'DBC-TRIAL%'"))!.c;
+  const paidPro = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE tier = 'pro' AND status = 'active' AND stripe_subscription_id IS NOT NULL"))!.c;
+  const paidTeam = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE tier = 'team' AND status = 'active' AND stripe_subscription_id IS NOT NULL"))!.c;
+  const cancelled = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE status = 'cancelled'"))!.c;
+  const expired = (await queryOne("SELECT COUNT(*) as c FROM licenses WHERE status = 'expired'"))!.c;
 
   const totalPaid = paidPro + paidTeam;
   const trialToPayRate = withTrial > 0 ? ((totalPaid / withTrial) * 100).toFixed(1) : '0.0';
@@ -117,8 +110,8 @@ router.get('/conversion', (_req: Request, res: Response) => {
   const estimatedLtv = avgRevenuePerUser * 12; // Assume 12-month average lifetime
 
   // Registrations last 7 / 30 days
-  const regsLast7 = (db.prepare("SELECT COUNT(*) as c FROM users WHERE created_at >= datetime('now', '-7 days')").get() as any).c;
-  const regsLast30 = (db.prepare("SELECT COUNT(*) as c FROM users WHERE created_at >= datetime('now', '-30 days')").get() as any).c;
+  const regsLast7 = (await queryOne("SELECT COUNT(*) as c FROM users WHERE created_at >= NOW() - INTERVAL '7 days'"))!.c;
+  const regsLast30 = (await queryOne("SELECT COUNT(*) as c FROM users WHERE created_at >= NOW() - INTERVAL '30 days'"))!.c;
 
   res.json({
     funnel: {

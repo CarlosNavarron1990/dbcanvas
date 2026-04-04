@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { v4 as uuid } from 'uuid';
-import { getDb } from '../db.js';
+import { queryOne, execute } from '../db.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { TIERS } from '../tiers.js';
 
@@ -29,9 +29,8 @@ router.post('/checkout', authMiddleware, async (req: Request, res: Response) => 
       return;
     }
 
-    const db = getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.id) as any;
-    const license = db.prepare('SELECT * FROM licenses WHERE user_id = ? AND status = ?').get(req.user!.id, 'active') as any;
+    const user = await queryOne('SELECT * FROM users WHERE id = $1', [req.user!.id]);
+    const license = await queryOne('SELECT * FROM licenses WHERE user_id = $1 AND status = $2', [req.user!.id, 'active']);
 
     // Get or create Stripe customer
     let customerId = license?.stripe_customer_id;
@@ -74,8 +73,6 @@ router.post('/webhook', async (req: Request, res: Response) => {
     return;
   }
 
-  const db = getDb();
-
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object as Stripe.Checkout.Session;
@@ -84,19 +81,19 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
       if (userId) {
         // Upgrade license
-        const license = db.prepare('SELECT * FROM licenses WHERE user_id = ? AND status = ?').get(userId, 'active') as any;
+        const license = await queryOne('SELECT * FROM licenses WHERE user_id = $1 AND status = $2', [userId, 'active']);
         if (license) {
-          db.prepare('UPDATE licenses SET tier = ?, stripe_customer_id = ?, stripe_subscription_id = ?, updated_at = datetime(?) WHERE id = ?')
-            .run(tier, session.customer, session.subscription, 'now', license.id);
+          await execute('UPDATE licenses SET tier = $1, stripe_customer_id = $2, stripe_subscription_id = $3, updated_at = NOW() WHERE id = $4',
+            [tier, session.customer, session.subscription, license.id]);
         } else {
           const licenseKey = `DBC-${tier.toUpperCase()}-${uuid().substring(0, 8).toUpperCase()}`;
-          db.prepare('INSERT INTO licenses (id, user_id, license_key, tier, stripe_customer_id, stripe_subscription_id) VALUES (?, ?, ?, ?, ?, ?)')
-            .run(uuid(), userId, licenseKey, tier, session.customer, session.subscription);
+          await execute('INSERT INTO licenses (id, user_id, license_key, tier, stripe_customer_id, stripe_subscription_id) VALUES ($1, $2, $3, $4, $5, $6)',
+            [uuid(), userId, licenseKey, tier, session.customer, session.subscription]);
         }
 
         // Record payment
-        db.prepare('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(uuid(), userId, session.payment_intent || session.id, session.amount_total || 0, tier, 'completed');
+        await execute('INSERT INTO payments (id, user_id, stripe_payment_id, amount, tier, status) VALUES ($1, $2, $3, $4, $5, $6)',
+          [uuid(), userId, session.payment_intent || session.id, session.amount_total || 0, tier, 'completed']);
       }
       break;
     }
@@ -105,15 +102,15 @@ router.post('/webhook', async (req: Request, res: Response) => {
     case 'customer.subscription.paused': {
       const sub = event.data.object as Stripe.Subscription;
       // Downgrade to free
-      db.prepare("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = datetime('now') WHERE stripe_subscription_id = ?")
-        .run(sub.id);
+      await execute("UPDATE licenses SET tier = 'free', status = 'cancelled', updated_at = NOW() WHERE stripe_subscription_id = $1",
+        [sub.id]);
       break;
     }
 
     case 'invoice.payment_failed': {
       const invoice = event.data.object as Stripe.Invoice;
-      db.prepare("UPDATE licenses SET status = 'suspended', updated_at = datetime('now') WHERE stripe_customer_id = ?")
-        .run(invoice.customer);
+      await execute("UPDATE licenses SET status = 'suspended', updated_at = NOW() WHERE stripe_customer_id = $1",
+        [invoice.customer]);
       break;
     }
   }
@@ -124,8 +121,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 /** Get customer portal link */
 router.post('/portal', authMiddleware, async (req: Request, res: Response) => {
   try {
-    const db = getDb();
-    const license = db.prepare('SELECT stripe_customer_id FROM licenses WHERE user_id = ? AND status = ?').get(req.user!.id, 'active') as any;
+    const license = await queryOne('SELECT stripe_customer_id FROM licenses WHERE user_id = $1 AND status = $2', [req.user!.id, 'active']);
 
     if (!license?.stripe_customer_id) {
       res.status(400).json({ error: 'No active subscription' });

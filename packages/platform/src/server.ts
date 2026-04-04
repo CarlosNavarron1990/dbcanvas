@@ -21,10 +21,13 @@ import usageRoutes from './routes/usage.js';
 import paymentRoutes from './routes/payments.js';
 import deviceAuthRoutes from './routes/device-auth.js';
 import { startCron } from './cron.js';
-import { getDb } from './db.js';
+import { initDb, queryOne, execute } from './db.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || process.env.PLATFORM_PORT || '4000');
+
+// Initialize database before starting
+await initDb();
 
 const app = express();
 
@@ -54,19 +57,18 @@ app.use('/api/usage', usageRoutes);
 app.use('/api/payments', paymentRoutes);
 
 // Bootstrap: promote first user to admin (one-time, only if no admins exist)
-app.post('/api/bootstrap-admin', (req, res) => {
+app.post('/api/bootstrap-admin', async (req, res) => {
   const { email, secret } = req.body;
   if (secret !== (process.env.JWT_SECRET || '')) {
     res.status(403).end(JSON.stringify({ error: 'Invalid secret' }));
     return;
   }
-  const db = getDb();
-  const admins = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin'").get() as any;
-  if (admins.c > 0) {
+  const admins = await queryOne("SELECT COUNT(*) as c FROM users WHERE role = 'admin'");
+  if (admins!.c > 0) {
     res.status(400).end(JSON.stringify({ error: 'Admin already exists' }));
     return;
   }
-  db.prepare("UPDATE users SET role = 'admin' WHERE email = ?").run(email);
+  await execute("UPDATE users SET role = 'admin' WHERE email = $1", [email]);
   res.end(JSON.stringify({ success: true, message: `${email} is now admin` }));
 });
 app.use('/api/auth/device', deviceAuthRoutes);

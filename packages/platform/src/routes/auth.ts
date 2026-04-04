@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
-import { getDb } from '../db.js';
+import { queryOne, execute } from '../db.js';
 import { generateToken } from '../middleware/auth.js';
 import { sendJson, sendError } from '../utils.js';
 
@@ -10,23 +10,22 @@ function env(key: string): string { return process.env[key] || ''; }
 
 // ==================== Email/Password ====================
 
-router.post('/register', (req: Request, res: Response) => {
+router.post('/register', async (req: Request, res: Response) => {
   const { email, name, password } = req.body;
   if (!email || !password) { sendError(res, 400, 'Email and password required'); return; }
-  const db = getDb();
-  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) { sendError(res, 409, 'Email already registered'); return; }
-  const result = createUserWithTrial(db, email, name || '', bcrypt.hashSync(password, 10));
+  const existing = await queryOne('SELECT id FROM users WHERE email = $1', [email]);
+  if (existing) { sendError(res, 409, 'Email already registered'); return; }
+  const result = await createUserWithTrial(email, name || '', bcrypt.hashSync(password, 10));
   sendJson(res, result, 201);
 });
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', async (req: Request, res: Response) => {
   const { email, password } = req.body;
   if (!email || !password) { sendError(res, 400, 'Email and password required'); return; }
-  const db = getDb();
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
+  const user = await queryOne('SELECT * FROM users WHERE email = $1', [email]);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) { sendError(res, 401, 'Invalid credentials'); return; }
   const token = generateToken({ id: user.id, email: user.email, role: user.role });
-  const license = db.prepare("SELECT license_key, tier, status, expires_at FROM licenses WHERE user_id = ? AND status = 'active'").get(user.id) as any;
+  const license = await queryOne("SELECT license_key, tier, status, expires_at FROM licenses WHERE user_id = $1 AND status = 'active'", [user.id]);
   sendJson(res, { token, user: { id: user.id, email: user.email, name: user.name, role: user.role }, license: license || null });
 });
 
@@ -59,7 +58,7 @@ router.get('/github/callback', async (req: Request, res: Response) => {
       email = emails.find((e: any) => e.primary)?.email || emails[0]?.email;
     }
     if (!email) throw new Error('Could not get email from GitHub');
-    const result = findOrCreateOAuthUser(email, ghUser.name || ghUser.login);
+    const result = await findOrCreateOAuthUser(email, ghUser.name || ghUser.login);
     res.redirect(`${env('FRONTEND_URL') || 'https://dbcanvas-web.vercel.app'}/auth/callback?token=${result.token}&provider=github`);
   } catch (err: any) { sendError(res, 500, err.message); }
 });
@@ -86,28 +85,27 @@ router.get('/google/callback', async (req: Request, res: Response) => {
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const gUser = await userRes.json() as any;
     if (!gUser.email) throw new Error('Could not get email from Google');
-    const result = findOrCreateOAuthUser(gUser.email, gUser.name || '');
+    const result = await findOrCreateOAuthUser(gUser.email, gUser.name || '');
     res.redirect(`${env('FRONTEND_URL') || 'https://dbcanvas-web.vercel.app'}/auth/callback?token=${result.token}&provider=google`);
   } catch (err: any) { sendError(res, 500, err.message); }
 });
 
 // ==================== Helpers ====================
 
-function findOrCreateOAuthUser(email: string, name: string) {
-  const db = getDb();
-  let user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as any;
-  if (!user) return createUserWithTrial(db, email, name, bcrypt.hashSync(uuid(), 10));
+async function findOrCreateOAuthUser(email: string, name: string) {
+  let user = await queryOne('SELECT * FROM users WHERE email = $1', [email]);
+  if (!user) return createUserWithTrial(email, name, bcrypt.hashSync(uuid(), 10));
   const token = generateToken({ id: user.id, email: user.email, role: user.role });
-  const license = db.prepare("SELECT license_key, tier, status, expires_at FROM licenses WHERE user_id = ? AND status = 'active'").get(user.id) as any;
+  const license = await queryOne("SELECT license_key, tier, status, expires_at FROM licenses WHERE user_id = $1 AND status = 'active'", [user.id]);
   return { token, user: { id: user.id, email: user.email, name: user.name, role: user.role }, license };
 }
 
-function createUserWithTrial(db: any, email: string, name: string, passwordHash: string) {
+async function createUserWithTrial(email: string, name: string, passwordHash: string) {
   const id = uuid();
-  db.prepare('INSERT INTO users (id, email, name, password_hash) VALUES (?, ?, ?, ?)').run(id, email, name, passwordHash);
+  await execute('INSERT INTO users (id, email, name, password_hash) VALUES ($1, $2, $3, $4)', [id, email, name, passwordHash]);
   const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
   const licenseKey = `DBC-TRIAL-${uuid().substring(0, 8).toUpperCase()}`;
-  db.prepare('INSERT INTO licenses (id, user_id, license_key, tier, expires_at) VALUES (?, ?, ?, ?, ?)').run(uuid(), id, licenseKey, 'pro', expiresAt);
+  await execute('INSERT INTO licenses (id, user_id, license_key, tier, expires_at) VALUES ($1, $2, $3, $4, $5)', [uuid(), id, licenseKey, 'pro', expiresAt]);
   const token = generateToken({ id, email, role: 'user' });
   return { token, user: { id, email, name }, license: { key: licenseKey, tier: 'pro', trialEnds: expiresAt } };
 }

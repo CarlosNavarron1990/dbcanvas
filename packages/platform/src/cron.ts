@@ -1,4 +1,4 @@
-import { getDb } from './db.js';
+import { query, execute } from './db.js';
 
 const ONE_DAY = 24 * 60 * 60 * 1000;
 
@@ -7,28 +7,27 @@ const ONE_DAY = 24 * 60 * 60 * 1000;
  * - Expires overdue licenses (trial ended, subscription lapsed)
  * - Logs upcoming expirations (7 days warning)
  */
-export function runLicenseMaintenance() {
-  const db = getDb();
+export async function runLicenseMaintenance() {
   const now = new Date().toISOString();
 
   // 1. Expire overdue active licenses
-  const expired = db.prepare(`
-    UPDATE licenses SET tier = 'free', status = 'expired', updated_at = datetime('now')
-    WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < ?
-  `).run(now);
+  const expiredCount = await execute(`
+    UPDATE licenses SET tier = 'free', status = 'expired', updated_at = NOW()
+    WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at < $1
+  `, [now]);
 
-  console.log(`[cron] Expired ${expired.changes} overdue licenses`);
+  console.log(`[cron] Expired ${expiredCount} overdue licenses`);
 
   // 2. Find licenses expiring in 7 days (for email reminders)
-  const expiringSoon = db.prepare(`
+  const expiringSoon = await query(`
     SELECT l.id, l.license_key, l.tier, l.expires_at, u.email, u.name
     FROM licenses l
     JOIN users u ON l.user_id = u.id
     WHERE l.status = 'active'
       AND l.expires_at IS NOT NULL
-      AND l.expires_at > ?
-      AND l.expires_at < datetime(?, '+7 days')
-  `).all(now, now) as any[];
+      AND l.expires_at > $1
+      AND l.expires_at < $1::timestamptz + INTERVAL '7 days'
+  `, [now]);
 
   if (expiringSoon.length > 0) {
     console.log(`[cron] ${expiringSoon.length} licenses expiring in 7 days:`);
@@ -39,37 +38,30 @@ export function runLicenseMaintenance() {
   }
 
   // 3. Clean up old usage events (>90 days)
-  const cleaned = db.prepare(`
-    DELETE FROM usage_events WHERE timestamp < datetime('now', '-90 days')
-  `).run();
+  const cleanedCount = await execute(`
+    DELETE FROM usage_events WHERE timestamp < NOW() - INTERVAL '90 days'
+  `);
 
-  if (cleaned.changes > 0) {
-    console.log(`[cron] Cleaned ${cleaned.changes} old usage events`);
+  if (cleanedCount > 0) {
+    console.log(`[cron] Cleaned ${cleanedCount} old usage events`);
   }
 
   return {
-    expired: expired.changes,
+    expired: expiredCount,
     expiringSoon: expiringSoon.length,
-    cleanedEvents: cleaned.changes,
+    cleanedEvents: cleanedCount,
   };
 }
 
 /** Start the cron interval (runs every 24 hours) */
 export function startCron() {
   // Run once immediately on startup
-  try {
-    const result = runLicenseMaintenance();
-    console.log(`[cron] Initial run complete:`, result);
-  } catch (e) {
-    console.error('[cron] Initial run failed:', e);
-  }
+  runLicenseMaintenance()
+    .then(result => console.log(`[cron] Initial run complete:`, result))
+    .catch(e => console.error('[cron] Initial run failed:', e));
 
   // Then every 24 hours
   setInterval(() => {
-    try {
-      runLicenseMaintenance();
-    } catch (e) {
-      console.error('[cron] Scheduled run failed:', e);
-    }
+    runLicenseMaintenance().catch(e => console.error('[cron] Scheduled run failed:', e));
   }, ONE_DAY).unref();
 }
