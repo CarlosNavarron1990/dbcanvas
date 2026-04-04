@@ -40,6 +40,23 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/usage', usageRoutes);
 app.use('/api/payments', paymentRoutes);
+
+// Bootstrap: promote first user to admin (one-time, only if no admins exist)
+app.post('/api/bootstrap-admin', (req, res) => {
+  const { email, secret } = req.body;
+  if (secret !== (process.env.JWT_SECRET || '')) {
+    res.status(403).end(JSON.stringify({ error: 'Invalid secret' }));
+    return;
+  }
+  const db = getDb();
+  const admins = db.prepare("SELECT COUNT(*) as c FROM users WHERE role = 'admin'").get() as any;
+  if (admins.c > 0) {
+    res.status(400).end(JSON.stringify({ error: 'Admin already exists' }));
+    return;
+  }
+  db.prepare("UPDATE users SET role = 'admin' WHERE email = ?").run(email);
+  res.end(JSON.stringify({ success: true, message: `${email} is now admin` }));
+});
 app.use('/api/auth/device', deviceAuthRoutes);
 
 // Health check
