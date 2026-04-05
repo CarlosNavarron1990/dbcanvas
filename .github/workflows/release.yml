@@ -41,15 +41,13 @@ jobs:
         working-directory: packages/desktop/dashboard
         run: npm install --no-audit --no-fund && npm run build
 
-      - name: Rebuild native modules for Electron
-        working-directory: packages/desktop
-        run: npx electron-builder install-app-deps
-
       - name: Build Electron (${{ matrix.target }})
         working-directory: packages/desktop
-        run: npx electron-builder --${{ matrix.target }} --publish always
+        run: npx electron-builder --${{ matrix.target }} --publish always --config.npmRebuild=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          USE_HARD_LINKS: false
+          ELECTRON_BUILDER_ALLOW_UNRESOLVED_DEPENDENCIES: "true"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
