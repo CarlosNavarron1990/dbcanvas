@@ -52,8 +52,8 @@ function getIdeConfigPaths(): { name: string; path: string }[] {
 /** Get the path to the MCP server entry point */
 function getMcpServerPath(): string {
   if (app.isPackaged) {
-    // In packaged app, MCP server is in resources/mcp-server
-    return path.join(process.resourcesPath, 'mcp-server', 'index.js');
+    // In packaged app, MCP server is the esbuild bundle in resources/mcp-server
+    return path.join(process.resourcesPath, 'mcp-server', 'index.mjs');
   }
   // In development, point to the workspace build
   return path.resolve(path.join(__dirname, '..', '..', 'mcp-server', 'build', 'index.js'));

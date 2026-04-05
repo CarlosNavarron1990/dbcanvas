@@ -8,6 +8,8 @@ on:
 jobs:
   build-desktop:
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       matrix:
         include:
@@ -39,7 +41,7 @@ jobs:
 
       - name: Build Electron (${{ matrix.target }})
         working-directory: packages/desktop
-        run: npx electron-builder --${{ matrix.target }} --publish never
+        run: npx electron-builder --${{ matrix.target }} --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

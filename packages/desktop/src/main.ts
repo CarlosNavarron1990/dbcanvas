@@ -13,6 +13,19 @@ const __dirname = path.dirname(__filename);
 let mainWindow: BrowserWindow | null = null;
 let expressServer: ReturnType<typeof startServer> | null = null;
 
+// Single-instance lock: ensure only one DBCanvas window is active at a time
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+  process.exit(0);
+}
+app.on('second-instance', () => {
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  }
+});
+
 async function createWindow() {
   // Register IPC handlers before creating window
   registerIpcHandlers();

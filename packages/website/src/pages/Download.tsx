@@ -2,7 +2,7 @@ import React from 'react';
 import { Monitor, Terminal, Apple, Download as DlIcon } from 'lucide-react';
 import { useI18n } from '../useI18n';
 
-const GH = 'https://github.com/xmn-services/dbcanvas/releases/latest';
+const GH = 'https://github.com/xaman1990/dbcanvas/releases/latest';
 
 const Download: React.FC = () => {
   const { t } = useI18n();
@@ -27,7 +27,7 @@ const Download: React.FC = () => {
         </div>
         <div className="install-block" style={{ marginTop: 60 }}>
           <h3 style={{ marginBottom: 12 }}>{t('dlCli')}</h3>
-          <pre className="code-block">{`git clone https://github.com/xmn-services/dbcanvas.git
+          <pre className="code-block">{`git clone https://github.com/xaman1990/dbcanvas.git
 cd dbcanvas && npm install && npm run build
 npm run start:mcp`}</pre>
         </div>

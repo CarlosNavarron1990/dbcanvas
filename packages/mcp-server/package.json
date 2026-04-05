@@ -9,17 +9,19 @@
   },
   "scripts": {
     "build": "tsc",
+    "bundle": "npm run build && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=build/bundle.mjs --external:sqlite3 --external:better-sqlite3 --external:tedious --external:pg-native --external:mysql --external:mysql2 --external:oracledb --external:pg-query-stream --banner:js='import { createRequire } from \"module\"; const require = createRequire(import.meta.url);'",
     "start": "node build/index.js",
     "test": "vitest run",
     "clean": "rm -rf build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.6.0",
     "@dbcanvas/core": "*",
+    "@modelcontextprotocol/sdk": "^1.6.0",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
+    "esbuild": "^0.27.7",
     "typescript": "^5.3.3",
     "vitest": "^4.1.2"
   }

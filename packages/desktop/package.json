@@ -14,7 +14,8 @@
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@dbcanvas/core": "*",
@@ -44,16 +45,26 @@
       "!**/*.ts",
       "!**/*.map"
     ],
+    "asarUnpack": ["**/node_modules/sqlite3/**", "**/*.node"],
+    "publish": {
+      "provider": "github",
+      "owner": "xaman1990",
+      "repo": "dbcanvas"
+    },
     "extraResources": [
       {
-        "from": "../../packages/mcp-server/build",
-        "to": "mcp-server",
-        "filter": ["**/*.js"]
+        "from": "../../packages/mcp-server/build/bundle.mjs",
+        "to": "mcp-server/index.mjs"
       },
       {
-        "from": "../../packages/core/build",
-        "to": "mcp-server/core",
-        "filter": ["**/*.js"]
+        "from": "../../node_modules/sqlite3",
+        "to": "mcp-server/node_modules/sqlite3",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../../node_modules/tedious",
+        "to": "mcp-server/node_modules/tedious",
+        "filter": ["**/*"]
       }
     ],
     "mac": {
@@ -67,7 +78,8 @@
       "icon": "assets/icon.icns",
       "darkModeSupport": true,
       "hardenedRuntime": true,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "artifactName": "DBCanvas.${ext}"
     },
     "win": {
       "target": [
@@ -76,7 +88,8 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "artifactName": "DBCanvas-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -88,7 +101,8 @@
     "linux": {
       "target": ["AppImage"],
       "category": "Development",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "artifactName": "DBCanvas.${ext}"
     }
   }
 }
