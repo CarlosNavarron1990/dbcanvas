@@ -6,6 +6,8 @@ import { startServer } from './server.js';
 import { createAppMenu } from './menu.js';
 import { createTray, destroyTray } from './tray.js';
 import { registerDeviceAuthHandlers } from './device-auth.js';
+import electronUpdater from 'electron-updater';
+const { autoUpdater } = electronUpdater;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +73,37 @@ async function createWindow() {
   createAppMenu(mainWindow);
   createTray(mainWindow);
 
+  // Auto-updater: check for updates on startup (only in packaged app)
+  if (app.isPackaged) {
+    autoUpdater.logger = console;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info.version);
+      mainWindow?.webContents.send('dbcanvas:update-available', info);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded:', info.version);
+      mainWindow?.webContents.send('dbcanvas:update-downloaded', info);
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.error('Auto-updater error:', err);
+    });
+
+    // Check after window is loaded (delay 3s)
+    setTimeout(() => {
+      autoUpdater.checkForUpdatesAndNotify().catch(console.error);
+    }, 3000);
+
+    // Check every 4 hours while running
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify().catch(console.error);
+    }, 4 * 60 * 60 * 1000);
+  }
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -80,6 +113,12 @@ async function createWindow() {
     return { action: 'deny' };
   });
 }
+
+// IPC: Install update and restart
+import { ipcMain } from 'electron';
+ipcMain.handle('dbcanvas:install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 
 app.on('ready', createWindow);
 

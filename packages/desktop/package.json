@@ -15,11 +15,12 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "postinstall": "electron-builder install-app-deps"
+    "rebuild-native": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@dbcanvas/core": "*",
     "cors": "^2.8.6",
+    "electron-updater": "^6.8.3",
     "express": "^5.2.1"
   },
   "devDependencies": {
@@ -45,7 +46,10 @@
       "!**/*.ts",
       "!**/*.map"
     ],
-    "asarUnpack": ["**/node_modules/sqlite3/**", "**/*.node"],
+    "asarUnpack": [
+      "**/node_modules/sqlite3/**",
+      "**/*.node"
+    ],
     "publish": {
       "provider": "github",
       "owner": "xaman1990",
@@ -59,12 +63,16 @@
       {
         "from": "../../node_modules/sqlite3",
         "to": "mcp-server/node_modules/sqlite3",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../../node_modules/tedious",
         "to": "mcp-server/node_modules/tedious",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
@@ -72,7 +80,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["universal"]
+          "arch": [
+            "universal"
+          ]
         }
       ],
       "icon": "assets/icon.icns",
@@ -85,7 +95,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico",
@@ -99,7 +111,9 @@
       "createStartMenuShortcut": true
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "category": "Development",
       "icon": "assets/icon.png",
       "artifactName": "DBCanvas.${ext}"
