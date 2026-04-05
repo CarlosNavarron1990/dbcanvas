@@ -7,7 +7,8 @@ const GH = 'https://github.com/xaman1990/dbcanvas/releases/latest';
 const Download: React.FC = () => {
   const { t } = useI18n();
   const platforms = [
-    { name: t('dlMac'), icon: <Apple size={32} />, desc: t('dlMacDesc'), file: 'DBCanvas.dmg', link: `${GH}/download/DBCanvas.dmg` },
+    { name: 'macOS (Apple Silicon)', icon: <Apple size={32} />, desc: 'M1/M2/M3/M4', file: 'DBCanvas-arm64.dmg', link: `${GH}/download/DBCanvas-arm64.dmg` },
+    { name: 'macOS (Intel)', icon: <Apple size={32} />, desc: 'Intel Mac', file: 'DBCanvas-x64.dmg', link: `${GH}/download/DBCanvas-x64.dmg` },
     { name: t('dlWin'), icon: <Monitor size={32} />, desc: t('dlWinDesc'), file: 'DBCanvas-Setup.exe', link: `${GH}/download/DBCanvas-Setup.exe` },
     { name: t('dlLinux'), icon: <Terminal size={32} />, desc: t('dlLinuxDesc'), file: 'DBCanvas.AppImage', link: `${GH}/download/DBCanvas.AppImage` },
   ];

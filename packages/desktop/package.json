@@ -80,16 +80,14 @@
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "universal"
-          ]
+          "arch": ["x64", "arm64"]
         }
       ],
       "icon": "assets/icon.icns",
       "darkModeSupport": true,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "artifactName": "DBCanvas.${ext}"
+      "artifactName": "DBCanvas-${arch}.${ext}"
     },
     "win": {
       "target": [
