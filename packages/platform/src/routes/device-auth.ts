@@ -29,7 +29,7 @@ router.post('/code', async (_req: Request, res: Response) => {
   await execute('INSERT INTO device_codes (device_code, user_code, expires_at) VALUES ($1, $2, $3)',
     [deviceCode, userCode, expiresAt]);
 
-  const verificationUrl = `${process.env.PLATFORM_URL || 'https://dbcanvas-web.vercel.app'}/auth/device`;
+  const verificationUrl = `${process.env.FRONTEND_URL || 'https://dbcanvas-web.vercel.app'}/auth/device`;
 
   res.json({
     device_code: deviceCode,
