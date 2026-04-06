@@ -4,6 +4,7 @@ import path from 'path';
 import os from 'os';
 
 const PLATFORM_API = process.env.DBCANVAS_PLATFORM_URL || 'https://dbcanvasplatform-production.up.railway.app';
+const WEBSITE_URL = process.env.DBCANVAS_WEBSITE_URL || 'https://dbcanvas-web.vercel.app';
 const SESSION_PATH = path.join(os.homedir(), '.dbcanvas_session.json');
 
 interface Session {
@@ -18,7 +19,7 @@ export function loadSession(): Session | null {
     if (fs.existsSync(SESSION_PATH)) {
       return JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -29,7 +30,7 @@ function saveSession(session: Session) {
 
 /** Clear session */
 function clearSession() {
-  try { fs.unlinkSync(SESSION_PATH); } catch {}
+  try { fs.unlinkSync(SESSION_PATH); } catch { }
 }
 
 /** Start the device auth flow */
@@ -79,10 +80,10 @@ export function registerDeviceAuthHandlers() {
   });
 
   ipcMain.handle('dbcanvas:auth-start-login', async () => {
-    const { deviceCode, userCode, verificationUrl } = await startDeviceAuth();
-    // Open browser for user to authorize
-    shell.openExternal(`${verificationUrl}?code=${userCode}`);
-    return { deviceCode, userCode, verificationUrl };
+    const { deviceCode, userCode } = await startDeviceAuth();
+    // Always open the Vercel website (user-facing), not Railway (API only)
+    shell.openExternal(`${WEBSITE_URL}/auth/device?code=${userCode}`);
+    return { deviceCode, userCode };
   });
 
   ipcMain.handle('dbcanvas:auth-poll', async (_event, deviceCode: string) => {
