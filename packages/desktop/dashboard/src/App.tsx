@@ -14,14 +14,60 @@ import LoginScreen from './components/LoginScreen';
 import './index.css';
 
 const POLL_INTERVAL = 10_000; // 10 seconds
-const isElectron = typeof window !== 'undefined' && !!(window as any).dbcanvas?.startLogin;
+
+function hasElectronBridge(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).dbcanvas?.startLogin;
+}
 
 const App: React.FC = () => {
-  const { viewMode, selectedNode, theme, fetchGraph, fetchProjects, fetchStatus, selectNode, setActiveTab, setLastSignal } = useStore();
+  const { viewMode, selectedNode, theme, fetchGraph, fetchProjects, fetchStatus, selectNode, setActiveTab, setLastSignal, setSession, setUpdateStatus } = useStore();
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dbcanvas-onboarded'));
-  const [showLogin, setShowLogin] = useState(() => isElectron && !localStorage.getItem('dbcanvas-session'));
-  const [, setSession] = useState<any>(null);
+  const [showLogin, setShowLogin] = useState(false);
+  const [loginChecked, setLoginChecked] = useState(false);
   const lastNodeCount = useRef(0);
+
+  // Check for existing session or show login
+  useEffect(() => {
+    const w = window as any;
+    const electron = hasElectronBridge();
+    console.log('[DBCanvas] hasElectronBridge:', electron, 'window.dbcanvas:', !!w.dbcanvas, 'startLogin:', !!w.dbcanvas?.startLogin);
+
+    if (!electron) {
+      // Not in Electron — skip login
+      console.log('[DBCanvas] Not in Electron, skipping login');
+      setLoginChecked(true);
+      return;
+    }
+
+    console.log('[DBCanvas] In Electron, checking session...');
+    w.dbcanvas.getSession().then((session: any) => {
+      console.log('[DBCanvas] getSession result:', session);
+      if (session?.token) {
+        setSession(session);
+        localStorage.setItem('dbcanvas-session', JSON.stringify(session));
+      } else {
+        localStorage.removeItem('dbcanvas-session');
+        setShowLogin(true);
+      }
+      setLoginChecked(true);
+    }).catch((err: any) => {
+      console.error('[DBCanvas] getSession error:', err);
+      setShowLogin(true);
+      setLoginChecked(true);
+    });
+
+    // Listen for auto-update events
+    const cleanupAvailable = w.dbcanvas.onUpdateAvailable?.((info: any) => {
+      setUpdateStatus('available', info?.version);
+    });
+    const cleanupDownloaded = w.dbcanvas.onUpdateDownloaded?.((info: any) => {
+      setUpdateStatus('downloaded', info?.version);
+    });
+    return () => {
+      cleanupAvailable?.();
+      cleanupDownloaded?.();
+    };
+  }, []);
 
   useEffect(() => {
     fetchGraph();
@@ -76,6 +122,10 @@ const App: React.FC = () => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
+  if (!loginChecked) {
+    return <div className="login-screen"><div className="login-card"><h1>DBCanvas</h1><p>Loading...</p></div></div>;
+  }
+
   if (showLogin) {
     return <LoginScreen
       onLogin={(s) => {
@@ -104,8 +154,8 @@ const App: React.FC = () => {
         <Toolbar />
         <div className="content-viewport">
           {viewMode === 'settings' ? <SettingsView /> :
-           viewMode === 'detail' && selectedNode ? <DetailPanel /> :
-           <GraphCanvas />}
+            viewMode === 'detail' && selectedNode ? <DetailPanel /> :
+              <GraphCanvas />}
         </div>
       </main>
     </div>

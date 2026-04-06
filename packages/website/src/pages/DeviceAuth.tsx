@@ -1,45 +1,66 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Monitor, Check, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Monitor, Check, AlertCircle, Loader2 } from 'lucide-react';
 import { isLoggedIn, apiFetch } from '../api';
 import { useI18n } from '../useI18n';
 
 const DeviceAuth: React.FC = () => {
   const { t, lang } = useI18n();
-  const [code, setCode] = useState('');
-  const [status, setStatus] = useState<'input' | 'success' | 'error'>('input');
+  const [searchParams] = useSearchParams();
+  const codeFromUrl = searchParams.get('code')?.toUpperCase().replace(/[^A-F0-9]/g, '').substring(0, 6) || '';
+  const [code, setCode] = useState(codeFromUrl);
+  const [status, setStatus] = useState<'input' | 'authorizing' | 'success' | 'error'>('input');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   if (!isLoggedIn()) {
-    // Redirect to login, then come back
-    window.location.href = `/login?redirect=/auth/device`;
+    const redirect = `/auth/device${codeFromUrl ? `?code=${codeFromUrl}` : ''}`;
+    window.location.href = `/login?redirect=${encodeURIComponent(redirect)}`;
     return null;
   }
 
-  const handleAuthorize = async () => {
-    if (code.length < 6) { setError(lang === 'es' ? 'Ingresa el código de 6 caracteres' : 'Enter the 6-character code'); return; }
-    setLoading(true);
+  const doAuthorize = async (userCode: string) => {
+    if (userCode.length < 6) {
+      setError(lang === 'es' ? 'Ingresa el código de 6 caracteres' : 'Enter the 6-character code');
+      return;
+    }
+    setStatus('authorizing');
     setError('');
 
     try {
       await apiFetch('/api/auth/device/authorize', {
         method: 'POST',
-        body: JSON.stringify({ user_code: code.toUpperCase() }),
+        body: JSON.stringify({ user_code: userCode }),
       });
       setStatus('success');
     } catch (err: any) {
       setError(err.message || 'Authorization failed');
       setStatus('error');
-    } finally {
-      setLoading(false);
     }
   };
+
+  // Auto-authorize if code came from URL (Postman-style: user just sees "Authorizing...")
+  useEffect(() => {
+    if (codeFromUrl.length === 6) {
+      doAuthorize(codeFromUrl);
+    }
+  }, []);
 
   return (
     <div className="page auth-page">
       <div className="auth-card" style={{ maxWidth: 440, textAlign: 'center' }}>
+        {status === 'authorizing' && (
+          <>
+            <div style={{ color: 'var(--accent)', marginBottom: 16 }}><Loader2 size={48} className="spin" /></div>
+            <h2>{lang === 'es' ? 'Autorizando...' : 'Authorizing...'}</h2>
+            <p className="auth-sub">
+              {lang === 'es'
+                ? 'Conectando tu aplicación de escritorio...'
+                : 'Connecting your desktop app...'}
+            </p>
+          </>
+        )}
+
         {status === 'input' && (
           <>
             <div style={{ color: 'var(--accent)', marginBottom: 16 }}><Monitor size={48} /></div>
@@ -71,13 +92,11 @@ const DeviceAuth: React.FC = () => {
 
             <button
               className="btn btn-primary btn-full"
-              onClick={handleAuthorize}
-              disabled={loading || code.length < 6}
+              onClick={() => doAuthorize(code)}
+              disabled={code.length < 6}
               style={{ marginTop: 8 }}
             >
-              {loading
-                ? (lang === 'es' ? 'Autorizando...' : 'Authorizing...')
-                : (lang === 'es' ? 'Autorizar este Dispositivo' : 'Authorize this Device')}
+              {lang === 'es' ? 'Autorizar este Dispositivo' : 'Authorize this Device'}
             </button>
 
             <p style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>

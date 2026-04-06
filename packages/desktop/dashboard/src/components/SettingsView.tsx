@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Database, Check, AlertCircle, Sun, Moon, Copy, Terminal, ChevronDown, ChevronRight } from 'lucide-react';
+import { Database, Check, AlertCircle, Sun, Moon, Copy, Terminal, ChevronDown, ChevronRight, User, LogOut, Download, RefreshCw } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { isElectron } from '../api';
 
@@ -124,12 +124,12 @@ function copyToClipboard(text: string, setCopied: (id: string) => void, id: stri
 
 const SettingsView: React.FC = () => {
   const {
-    ides, ideMessage, theme,
-    loadIdes, registerIde, unregisterIde, registerAllIdes, toggleTheme,
+    ides, ideMessage, theme, session, updateStatus, updateVersion,
+    loadIdes, registerIde, unregisterIde, registerAllIdes, toggleTheme, logout,
   } = useStore();
   const [copied, setCopied] = useState('');
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'install' | 'auto' | 'theme'>('install');
+  const [activeSection, setActiveSection] = useState<'account' | 'install' | 'auto' | 'theme'>(isElectron ? 'account' : 'install');
 
   useEffect(() => { loadIdes(); }, []);
 
@@ -140,6 +140,12 @@ const SettingsView: React.FC = () => {
   return (
     <div className="detail-central-view slide-up">
       <div className="detail-header-tabs">
+        {isElectron && (
+          <button className={`tab ${activeSection === 'account' ? 'active' : ''}`} onClick={() => setActiveSection('account')}>
+            <User size={12} />
+            <span style={{ marginLeft: 6 }}>ACCOUNT</span>
+          </button>
+        )}
         <button className={`tab ${activeSection === 'install' ? 'active' : ''}`} onClick={() => setActiveSection('install')}>
           <Terminal size={12} />
           <span style={{ marginLeft: 6 }}>INSTALL MCP</span>
@@ -157,6 +163,77 @@ const SettingsView: React.FC = () => {
       </div>
 
       <div className="detail-body">
+        {/* ===================== ACCOUNT SECTION ===================== */}
+        {activeSection === 'account' && (
+          <>
+            <div className="card-obsidian">
+              <h1>Account</h1>
+              {session ? (
+                <div className="account-info">
+                  <div className="account-row">
+                    <span className="account-label">Name</span>
+                    <span className="account-value">{session.user.name}</span>
+                  </div>
+                  <div className="account-row">
+                    <span className="account-label">Email</span>
+                    <span className="account-value">{session.user.email}</span>
+                  </div>
+                  <div className="account-row">
+                    <span className="account-label">Tier</span>
+                    <span className={`badge-${session.license?.tier === 'pro' ? 'active' : session.license?.tier === 'team' ? 'active' : 'muted'}`}>
+                      {session.license?.tier?.toUpperCase() || 'FREE'}
+                    </span>
+                  </div>
+                  {session.license?.expiresAt && (
+                    <div className="account-row">
+                      <span className="account-label">Expires</span>
+                      <span className="account-value">{new Date(session.license.expiresAt).toLocaleDateString()}</span>
+                    </div>
+                  )}
+                  <button className="btn-sm btn-danger" style={{ marginTop: 16 }} onClick={logout}>
+                    <LogOut size={12} /> Logout
+                  </button>
+                </div>
+              ) : (
+                <div className="account-info">
+                  <p style={{ color: 'var(--text-muted)', marginBottom: 12 }}>Not logged in. Using Free tier.</p>
+                  <button className="btn-primary-capture" onClick={() => {
+                    localStorage.removeItem('dbcanvas-session');
+                    window.location.reload();
+                  }}>
+                    Login with DBCanvas Account
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Update status */}
+            <div className="card-obsidian" style={{ marginTop: 16 }}>
+              <h2>Updates</h2>
+              {updateStatus === 'idle' && (
+                <p style={{ color: 'var(--text-muted)' }}>You are on the latest version.</p>
+              )}
+              {updateStatus === 'available' && (
+                <div className="update-notice">
+                  <Download size={16} />
+                  <span>Version {updateVersion} is downloading...</span>
+                </div>
+              )}
+              {updateStatus === 'downloaded' && (
+                <div className="update-notice">
+                  <RefreshCw size={16} />
+                  <span>Version {updateVersion} is ready to install.</span>
+                  <button className="btn-primary-capture" style={{ marginLeft: 12 }} onClick={() => {
+                    (window as any).dbcanvas?.installUpdate();
+                  }}>
+                    Restart & Update
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
         {/* ===================== INSTALL MCP SECTION ===================== */}
         {activeSection === 'install' && (
           <>

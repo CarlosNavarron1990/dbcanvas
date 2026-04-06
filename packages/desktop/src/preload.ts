@@ -57,6 +57,19 @@ contextBridge.exposeInMainWorld('dbcanvas', {
   pollAuth: (deviceCode: string) => ipcRenderer.invoke('dbcanvas:auth-poll', deviceCode),
   logout: () => ipcRenderer.invoke('dbcanvas:auth-logout'),
 
+  // Updates
+  installUpdate: () => ipcRenderer.invoke('dbcanvas:install-update'),
+  onUpdateAvailable: (callback: (info: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('dbcanvas:update-available', handler);
+    return () => ipcRenderer.removeListener('dbcanvas:update-available', handler);
+  },
+  onUpdateDownloaded: (callback: (info: any) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
+    ipcRenderer.on('dbcanvas:update-downloaded', handler);
+    return () => ipcRenderer.removeListener('dbcanvas:update-downloaded', handler);
+  },
+
   // Events from main process
   onNotification: (callback: (data: { type: string; name: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, data: { type: string; name: string }) => callback(data);

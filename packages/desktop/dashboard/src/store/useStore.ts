@@ -33,6 +33,14 @@ export type ViewMode = 'graph' | 'settings' | 'detail';
 export type DetailTab = 'info' | 'code' | 'data';
 export type Theme = 'dark' | 'light';
 
+export interface UserSession {
+  token: string;
+  user: { id: string; email: string; name: string };
+  license: { key: string; tier: string; expiresAt?: string } | null;
+}
+
+export type UpdateStatus = 'idle' | 'available' | 'downloaded';
+
 interface AppState {
   // Graph
   graphData: GraphData;
@@ -58,6 +66,11 @@ interface AppState {
   // IDE
   ides: IdeInfo[];
   ideMessage: string;
+
+  // Auth / Account
+  session: UserSession | null;
+  updateStatus: UpdateStatus;
+  updateVersion: string;
 
   // Notifications
   lastSignal: { type: string; name: string } | null;
@@ -92,6 +105,11 @@ interface AppState {
   registerIde: (configPath: string) => Promise<void>;
   unregisterIde: (configPath: string) => Promise<void>;
   registerAllIdes: () => Promise<void>;
+
+  // Auth / Account
+  setSession: (session: UserSession | null) => void;
+  logout: () => Promise<void>;
+  setUpdateStatus: (status: UpdateStatus, version?: string) => void;
 }
 
 const savedTheme = (typeof localStorage !== 'undefined' ? localStorage.getItem('dbcanvas-theme') : null) as Theme | null;
@@ -112,6 +130,9 @@ export const useStore = create<AppState>((set, get) => ({
   status: null,
   ides: [],
   ideMessage: '',
+  session: null,
+  updateStatus: 'idle',
+  updateVersion: '',
   lastSignal: null,
   theme: savedTheme || 'dark',
   commandPaletteOpen: false,
@@ -236,4 +257,15 @@ export const useStore = create<AppState>((set, get) => ({
     setTimeout(() => set({ ideMessage: '' }), 3000);
     await get().loadIdes();
   },
+
+  setSession: (session) => set({ session }),
+
+  logout: async () => {
+    const w = window as any;
+    if (w.dbcanvas?.logout) await w.dbcanvas.logout();
+    localStorage.removeItem('dbcanvas-session');
+    set({ session: null });
+  },
+
+  setUpdateStatus: (status, version) => set({ updateStatus: status, updateVersion: version || '' }),
 }));
