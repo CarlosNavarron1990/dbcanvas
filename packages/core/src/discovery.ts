@@ -26,7 +26,7 @@ let localDbInstances: Record<string, Knex> = {};
 /** Close all cached local DB connections */
 export async function closeAllLocalDbs(): Promise<void> {
   for (const [key, db] of Object.entries(localDbInstances)) {
-    try { await db.destroy(); } catch {}
+    try { await db.destroy(); } catch { }
     delete localDbInstances[key];
   }
 }
@@ -34,7 +34,7 @@ export async function closeAllLocalDbs(): Promise<void> {
 export async function getLocalDb(projectPathOverride?: string): Promise<Knex> {
   const config = discoverConnectionString(projectPathOverride);
   let dbDir: string;
-  
+
   if (config && config.solutionRoot && config.solutionRoot !== '/') {
     dbDir = path.join(config.solutionRoot, '.dbcanvas');
   } else if (projectPathOverride) {
@@ -47,7 +47,7 @@ export async function getLocalDb(projectPathOverride?: string): Promise<Knex> {
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
-    
+
     // Auto-inject to .gitignore for security
     const gitignorePath = path.join(path.dirname(dbDir), '.gitignore');
     if (fs.existsSync(gitignorePath)) {
@@ -61,7 +61,7 @@ export async function getLocalDb(projectPathOverride?: string): Promise<Knex> {
   }
 
   const dbPath = path.join(dbDir, 'discovery.db');
-  
+
   if (localDbInstances[dbPath]) return localDbInstances[dbPath];
 
   log.info({ dbPath }, 'Using discovery database');
@@ -100,14 +100,14 @@ export async function getLocalDb(projectPathOverride?: string): Promise<Knex> {
 
 export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: string): Promise<{ nodes: number; edges: number }> {
   const db = await getLocalDb(projectPathOverride);
-  
+
   // 1. Get Tables
   const tables = await remoteDb.raw(
-    remoteDb.client.config.client === 'mssql' 
-      ? "SELECT name FROM sys.tables" 
+    remoteDb.client.config.client === 'mssql'
+      ? "SELECT name FROM sys.tables"
       : "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'"
   );
-  
+
   const tableRows = remoteDb.client.config.client === 'pg' ? tables.rows : tables;
 
   for (const row of tableRows) {
@@ -165,9 +165,9 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
   const nodeCount = await db('nodes').count('id as count').first();
   const edgeCount = await db('edges').count('* as count').first();
 
-  return { 
-    nodes: Number(nodeCount?.count || 0), 
-    edges: Number(edgeCount?.count || 0) 
+  return {
+    nodes: Number(nodeCount?.count || 0),
+    edges: Number(edgeCount?.count || 0)
   };
 }
 
@@ -246,7 +246,7 @@ export async function discoverObject(remoteDb: DbClient, name: string, type: 'TA
       }).onConflict(['source', 'target', 'type']).ignore();
 
       // Ensure shadow structure for the table
-      await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => {});
+      await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => { });
     }
   } else if (type === 'TABLE') {
     // 1. Add Table Node
@@ -257,7 +257,7 @@ export async function discoverObject(remoteDb: DbClient, name: string, type: 'TA
     }).onConflict('id').merge();
 
     // 2. Ensure shadow structure
-    await ensureShadowTable(remoteDb, name, projectPathOverride).catch(() => {});
+    await ensureShadowTable(remoteDb, name, projectPathOverride).catch(() => { });
   }
 }
 
@@ -266,10 +266,10 @@ export async function discoverObject(remoteDb: DbClient, name: string, type: 'TA
  */
 export async function ensureShadowTable(remoteDb: DbClient, tableName: string, projectPathOverride?: string): Promise<void> {
   const local = await getLocalDb(projectPathOverride);
-  
+
   // 1. Get remote columns
   const columns = await getTableColumns(remoteDb, tableName);
-  
+
   // 2. Map types and create table if not exists
   if (!(await local.schema.hasTable(`shadow_${tableName}`))) {
     await local.schema.createTable(`shadow_${tableName}`, (table) => {
@@ -317,7 +317,7 @@ export async function captureShadowData(remoteDb: DbClient, tableName: string, p
   }
 
   const finalLimit = limit || totalRows;
-  
+
   // 2. Fetch Data
   let query = remoteDb(tableName).select('*').limit(finalLimit);
 
@@ -328,15 +328,15 @@ export async function captureShadowData(remoteDb: DbClient, tableName: string, p
       }
     }
   }
-  
+
   const data = await query;
-  
+
   // Clear and Repopulate
   await local(`shadow_${tableName}`).del();
   if (data.length > 0) {
     await local(`shadow_${tableName}`).insert(data);
   }
-  
+
   return data.length;
 }
 

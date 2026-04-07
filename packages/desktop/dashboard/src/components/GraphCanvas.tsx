@@ -263,8 +263,8 @@ const GraphCanvas: React.FC = () => {
         d3VelocityDecay={0.25}
         cooldownTicks={200}
         warmupTicks={100}
-        minZoom={0.3}
-        maxZoom={10}
+        minZoom={0.01}
+        maxZoom={50}
       />
     </div>
   );

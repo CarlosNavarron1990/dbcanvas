@@ -29,7 +29,7 @@ function tryParseConfigFile(configPath: string | null, fileName: string, solutio
         // Skip Entity Framework metadata strings — extract inner provider connection string
         if (connStr.startsWith('metadata=')) {
           const inner = connStr.match(/provider connection string=&quot;([^&]+)&quot;/i)
-                     || connStr.match(/provider connection string="([^"]+)"/i);
+            || connStr.match(/provider connection string="([^"]+)"/i);
           if (inner) connStr = inner[1];
           else continue; // Skip if can't extract inner connection
         }
@@ -41,28 +41,28 @@ function tryParseConfigFile(configPath: string | null, fileName: string, solutio
     } else if (fileName.toLowerCase().endsWith('.json')) {
       const json = JSON.parse(content);
       const connString = json.ConnectionStrings?.DefaultConnection ||
-                         json.ConnectionStrings?.DATABASE_URL ||
-                         json.DATABASE_URL;
+        json.ConnectionStrings?.DATABASE_URL ||
+        json.DATABASE_URL;
       if (connString) {
         return { connectionString: connString, source: `${fileName} (${configPath})`, configDir: path.dirname(configPath), solutionRoot, filePath: configPath, lastModified: stats.mtime };
       }
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
 export function discoverConnectionString(overridePath?: string): DbConfig | null {
   const currentDir = process.cwd();
-  
+
   // Use the script location as a fallback for the search start
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const searchStarts = overridePath ? [overridePath] : [currentDir, path.join(scriptDir, '..')];
-  
+
   for (const start of searchStarts) {
     if (!start || start === '/') continue;
-    
+
     const solutionRoot = findSolutionRoot(start);
-    
+
     // 1. Check for .env variations
     for (const fileName of COMMON_ENV_FILES) {
       const envPath = findFileUpwards(start, fileName);
@@ -70,14 +70,14 @@ export function discoverConnectionString(overridePath?: string): DbConfig | null
         try {
           const stats = fs.statSync(envPath);
           const envConfig = dotenv.parse(fs.readFileSync(envPath));
-          const connectionString = envConfig.DATABASE_URL || 
-                                   envConfig.DB_CONNECTION || 
-                                   envConfig.CONNECTION_STRING ||
-                                   envConfig.DB_URL;
+          const connectionString = envConfig.DATABASE_URL ||
+            envConfig.DB_CONNECTION ||
+            envConfig.CONNECTION_STRING ||
+            envConfig.DB_URL;
           if (connectionString) {
             return { connectionString, source: `${fileName} (${envPath})`, configDir: path.dirname(envPath), solutionRoot, filePath: envPath, lastModified: stats.mtime };
           }
-        } catch (e) {}
+        } catch (e) { }
       }
     }
 
@@ -103,7 +103,7 @@ export function discoverConnectionString(overridePath?: string): DbConfig | null
             }
           }
         }
-      } catch {}
+      } catch { }
     }
   }
 
@@ -113,7 +113,7 @@ export function discoverConnectionString(overridePath?: string): DbConfig | null
 function findFileUpwards(startDir: string, fileName: string): string | null {
   let currentDir = startDir;
   const root = path.parse(currentDir).root;
-  
+
   while (currentDir !== root) {
     const fullPath = path.join(currentDir, fileName);
     if (fs.existsSync(fullPath)) {
@@ -123,11 +123,11 @@ function findFileUpwards(startDir: string, fileName: string): string | null {
     if (parentDir === currentDir) break; // Defensive break
     currentDir = parentDir;
   }
-  
+
   // Check root
   const rootPath = path.join(root, fileName);
   if (fs.existsSync(rootPath)) return rootPath;
-  
+
   return null;
 }
 
@@ -139,6 +139,11 @@ function findFileUpwards(startDir: string, fileName: string): string | null {
  * opening a subproject (e.g. sisGoVari.DataLayer/) still resolves to the
  * solution root (e.g. sisGoVari/) where the .sln lives.
  */
+export interface RegisteredProject {
+  name: string;
+  path: string;
+}
+
 export function findSolutionRoot(startDir: string): string {
   let current = path.resolve(startDir);
   const root = path.parse(current).root;
@@ -155,21 +160,19 @@ export function findSolutionRoot(startDir: string): string {
       const hasSln = files.some(f => f.toLowerCase().endsWith('.sln'));
       if (hasSln) {
         slnCandidate = current;
-        // Don't break — there might be a higher .sln (rare but possible)
       }
 
-      // Check for .git — good signal, but .sln takes priority
+      // Check for .git — good signal
       if (!gitCandidate && files.includes('.git')) {
         gitCandidate = current;
       }
-    } catch {}
+    } catch { }
 
     const parent = path.dirname(current);
     if (parent === current) break;
     current = parent;
   }
 
-  // Priority: .sln > .git > startDir
   const result = slnCandidate || gitCandidate || path.resolve(startDir);
   registerSolutionRoot(result);
   return result;
@@ -181,26 +184,93 @@ function registerSolutionRoot(rootPath: string) {
     const registryDir = path.dirname(registryPath);
     if (!fs.existsSync(registryDir)) fs.mkdirSync(registryDir, { recursive: true });
 
-    let projects: string[] = [];
-    if (fs.existsSync(registryPath)) {
-      projects = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-    }
+    let projects = getRegisteredProjects();
 
-    if (!projects.includes(rootPath)) {
-      projects.push(rootPath);
+    if (!projects.find(p => p.path === rootPath)) {
+      projects.push({
+        name: path.basename(rootPath),
+        path: rootPath
+      });
       fs.writeFileSync(registryPath, JSON.stringify(projects, null, 2));
     }
-  } catch (e) {
-    // Silent failure for project registration (non-critical)
-  }
+  } catch (e) { }
 }
 
-export function getRegisteredProjects(): string[] {
+export function getRegisteredProjects(): RegisteredProject[] {
   try {
     const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
     if (fs.existsSync(registryPath)) {
-      return JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+      const data = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+
+      // Migration: convert string[] to RegisteredProject[]
+      if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'string') {
+        const migrated = (data as string[]).map(p => ({
+          name: path.basename(p),
+          path: p
+        }));
+        fs.writeFileSync(registryPath, JSON.stringify(migrated, null, 2));
+        return migrated;
+      }
+      return data;
     }
-  } catch (e) {}
+  } catch (e) { }
   return [];
+}
+
+export function removeProject(projectPath: string) {
+  const projects = getRegisteredProjects().filter(p => p.path !== projectPath);
+  const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+  fs.writeFileSync(registryPath, JSON.stringify(projects, null, 2));
+}
+
+export function updateProjectName(projectPath: string, newName: string) {
+  const projects = getRegisteredProjects().map(p =>
+    p.path === projectPath ? { ...p, name: newName } : p
+  );
+  const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+  fs.writeFileSync(registryPath, JSON.stringify(projects, null, 2));
+}
+
+/**
+ * Discovers projects by scanning for directories containing .dbcanvas
+ */
+export function discoverLocalProjects(searchPath: string): RegisteredProject[] {
+  const discovered: RegisteredProject[] = [];
+  const maxDepth = 4;
+
+  function scan(dir: string, depth: number) {
+    if (depth > maxDepth) return;
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+
+      // Check if this directory is already a project
+      if (entries.some(e => e.isDirectory() && e.name === '.dbcanvas')) {
+        discovered.push({
+          name: path.basename(dir),
+          path: dir
+        });
+        return; // Don't scan deeper into found projects
+      }
+
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules' && entry.name !== 'bin' && entry.name !== 'obj') {
+          scan(path.join(dir, entry.name), depth + 1);
+        }
+      }
+    } catch { }
+  }
+
+  scan(path.resolve(searchPath), 0);
+
+  // Register discovered projects that aren't already registered
+  const existing = getRegisteredProjects();
+  const existingPaths = new Set(existing.map(p => p.path));
+
+  for (const p of discovered) {
+    if (!existingPaths.has(p.path)) {
+      registerSolutionRoot(p.path);
+    }
+  }
+
+  return getRegisteredProjects();
 }

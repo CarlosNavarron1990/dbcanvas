@@ -80,12 +80,40 @@ app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', version: '1.0.0', time: new Date().toISOString() });
 });
 
+// Serve static files from the public/downloads directory
+const downloadsDir = path.join(__dirname, '..', 'public', 'downloads');
+if (!fs.existsSync(downloadsDir)) {
+  fs.mkdirSync(downloadsDir, { recursive: true });
+}
+app.use('/downloads', express.static(downloadsDir));
+
+// API route to simplify downloads and potentially track them
+app.get('/api/download/:platform', (req, res) => {
+  const { platform } = req.params;
+  const files: Record<string, string> = {
+    'win': 'DBCanvas-Setup.exe',
+    'mac-arm': 'DBCanvas-arm64.dmg',
+    'mac-intel': 'DBCanvas-x64.dmg',
+    'linux': 'DBCanvas.AppImage'
+  };
+  
+  const filename = files[platform];
+  if (filename) {
+    res.redirect(`/downloads/${filename}`);
+  } else {
+    res.status(404).json({ error: 'Platform not found' });
+  }
+});
+
 // Serve admin panel static files
 const adminDist = path.join(__dirname, '..', 'admin', 'dist');
-app.use(express.static(adminDist));
-app.use((_req, res) => {
-  res.sendFile(path.join(adminDist, 'index.html'));
-});
+if (fs.existsSync(adminDist)) {
+  app.use(express.static(adminDist));
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(adminDist, 'index.html'));
+  });
+}
+
 
 const HOST = process.env.RAILWAY_ENVIRONMENT ? '0.0.0.0' : '127.0.0.1';
 app.listen(PORT, HOST, () => {

@@ -15,8 +15,10 @@
     "dist": "electron-builder",
     "dist:mac": "electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "rebuild-native": "electron-builder install-app-deps"
+    "rebuild-native": "electron-builder install-app-deps",
+    "deploy:local": "mkdir -p ../platform/public/downloads && cp release/DBCanvas-Setup.exe ../platform/public/downloads/ 2>/dev/null || true && cp release/*.dmg ../platform/public/downloads/ 2>/dev/null || true && cp release/*.AppImage ../platform/public/downloads/ 2>/dev/null || true"
   },
+
   "dependencies": {
     "@dbcanvas/core": "*",
     "cors": "^2.8.6",

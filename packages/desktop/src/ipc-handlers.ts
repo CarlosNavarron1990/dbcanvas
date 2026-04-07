@@ -5,6 +5,7 @@ import {
   getDiscoveryGraph, syncDiscovery, getShadowData, captureShadowData,
   createDbClient, discoverConnectionString, getRegisteredProjects,
   getProcedureCode, getTableColumns,
+  removeProject, updateProjectName, discoverLocalProjects,
 } from '@dbcanvas/core';
 import { detectInstalledIdes, registerInIde, unregisterFromIde, registerInAllIdes } from './ide-registrar.js';
 
@@ -118,7 +119,18 @@ export function registerIpcHandlers() {
     return unregisterFromIde(configPath);
   });
 
-  ipcMain.handle('dbcanvas:register-all-ides', async () => {
-    return registerInAllIdes();
+  // Project Management
+  ipcMain.handle('dbcanvas:delete-project', async (_event, projectPath: string) => {
+    return removeProject(projectPath);
+  });
+
+  ipcMain.handle('dbcanvas:rename-project', async (_event, projectPath: string, newName: string) => {
+    return updateProjectName(projectPath, newName);
+  });
+
+  ipcMain.handle('dbcanvas:run-discovery', async (_event, searchPath?: string) => {
+    const startPath = searchPath || process.env.HOME || '.';
+    return discoverLocalProjects(startPath);
   });
 }
+

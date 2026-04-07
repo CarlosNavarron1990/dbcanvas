@@ -59,7 +59,7 @@ function notifyDashboard(type: string, name: string, retryCount = 0) {
     });
     req.write(data);
     req.end();
-  } catch (e) {}
+  } catch (e) { }
 }
 
 // Connection pool with TTL-based cleanup
@@ -72,7 +72,7 @@ setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of dbClients.entries()) {
     if (now - entry.lastUsed > POOL_TTL_MS) {
-      entry.client.destroy().catch(() => {});
+      entry.client.destroy().catch(() => { });
       dbClients.delete(key);
       console.error(`Pool cleanup: closed stale connection for ${key.substring(0, 30)}...`);
     }
@@ -94,15 +94,15 @@ function getActiveContext(projectPathOverride?: string) {
   const isPlaceholder = rawEnvDbUrl && PLACEHOLDERS.some(p => rawEnvDbUrl.includes(p));
   const envDbUrl = (rawEnvDbUrl && !isPlaceholder) ? rawEnvDbUrl : null;
 
-  const activeUrl = process.argv.find(arg => arg.startsWith('--db-url='))?.split('=')[1] || 
-                    envDbUrl || 
-                    currentConfig?.connectionString || 
-                    null;
-                    
-  return { 
-    activeUrl, 
-    config: currentConfig, 
-    projectRoot: currentConfig?.solutionRoot || searchPath 
+  const activeUrl = process.argv.find(arg => arg.startsWith('--db-url='))?.split('=')[1] ||
+    envDbUrl ||
+    currentConfig?.connectionString ||
+    null;
+
+  return {
+    activeUrl,
+    config: currentConfig,
+    projectRoot: currentConfig?.solutionRoot || searchPath
   };
 }
 
@@ -230,8 +230,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "get_effective_config",
         description: "View the current active configuration source and masked connection string",
-        inputSchema: { 
-          type: "object", 
+        inputSchema: {
+          type: "object",
           properties: {
             projectPath: { type: "string", description: "Optional: Root path of the project" }
           }
@@ -252,18 +252,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       {
         name: "sync_discovery",
         description: "Synchronize database structure (tables, FKs, SP dependencies) to local discovery.db",
-        inputSchema: { 
-          type: "object", 
+        inputSchema: {
+          type: "object",
           properties: {
             projectPath: { type: "string", description: "Optional: Root path of the project" }
-          } 
+          }
         }
       },
       {
         name: "get_discovery_graph",
         description: "Retrieve the local discovery graph (nodes and links) for visualization",
-        inputSchema: { 
-          type: "object", 
+        inputSchema: {
+          type: "object",
           properties: {
             projectPath: { type: "string", description: "Optional: Root path of the project" }
           }
@@ -442,7 +442,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           }]
         };
       }
-      
+
       case "test_connection": {
         const args = parseArgs(schemas.TestConnectionArgs, toolArgs);
         const context = getActiveContext(args.projectPath);
@@ -712,9 +712,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const context = getActiveContext(toolArgs.projectPath as string | undefined);
     const configInfo = `\n\n[Diagnostic Info]\nProject Path: ${context.projectRoot}\nConfig Source: ${context.config?.source || 'Default'}\nLast Modified: ${context.config?.lastModified?.toLocaleString() || 'Unknown'}`;
     const timestamp = new Date().toLocaleString();
-    return { 
+    return {
       content: [{ type: "text", text: `Error executing ${toolName} at ${timestamp}: ${err.message}${configInfo}` }],
-      isError: true 
+      isError: true
     };
   }
 });
@@ -742,7 +742,7 @@ main().catch((error) => {
 async function cleanup() {
   console.error('Shutting down MCP server...');
   for (const entry of dbClients.values()) {
-    try { await entry.client.destroy(); } catch {}
+    try { await entry.client.destroy(); } catch { }
   }
   dbClients.clear();
   await closeAllLocalDbs();

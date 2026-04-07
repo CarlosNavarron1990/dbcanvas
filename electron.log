@@ -1,0 +1,18 @@
+
+> dbcanvas@1.0.0 start:desktop
+> npm run start -w @dbcanvas/desktop
+
+
+> @dbcanvas/desktop@1.0.0 start
+> electron .
+
+Express server started on port 3000 (MCP bridge)
+DBCanvas server running at http://127.0.0.1:3000
+/Users/xmn/Desarrollos/PlugginSQLAgent/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron exited with signal SIGTERM
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+npm error workspace @dbcanvas/desktop@1.0.0
+npm error location /Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+npm error command failed
+npm error command sh -c electron .

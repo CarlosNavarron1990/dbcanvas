@@ -70,7 +70,7 @@ const TreeExplorer: React.FC = () => {
           <select className="project-dropdown" value={currentProject} onChange={handleProjectChange}>
             <option value="">Switch Project...</option>
             {projects.map(p => (
-              <option key={p} value={p}>{p.split(/[/\\]/).pop() || p}</option>
+              <option key={p.path} value={p.path}>{p.name}</option>
             ))}
           </select>
         )}

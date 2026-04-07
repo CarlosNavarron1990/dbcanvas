@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Database, Check, AlertCircle, Sun, Moon, Copy, Terminal, ChevronDown, ChevronRight, User, LogOut, Download, RefreshCw } from 'lucide-react';
+import { 
+  Database, Check, AlertCircle, Sun, Moon, Copy, Terminal, ChevronDown, 
+  ChevronRight, User, LogOut, Download, RefreshCw, Edit, Trash2, 
+  Search, Plus, Save, X, Loader2 
+} from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { isElectron } from '../api';
 
@@ -125,13 +129,34 @@ function copyToClipboard(text: string, setCopied: (id: string) => void, id: stri
 const SettingsView: React.FC = () => {
   const {
     ides, ideMessage, theme, session, updateStatus, updateVersion,
+    projects, discoveryLoading,
     loadIdes, registerIde, unregisterIde, registerAllIdes, toggleTheme, logout,
+    deleteProject, renameProject, runDiscovery, fetchProjects
   } = useStore();
   const [copied, setCopied] = useState('');
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
-  const [activeSection, setActiveSection] = useState<'account' | 'install' | 'auto' | 'theme'>(isElectron ? 'account' : 'install');
+  const [activeSection, setActiveSection] = useState<'account' | 'projects' | 'install' | 'auto' | 'theme'>(isElectron ? 'projects' : 'install');
 
-  useEffect(() => { loadIdes(); }, []);
+  // Local state for renaming
+  const [editingPath, setEditingPath] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+
+  useEffect(() => { 
+    loadIdes(); 
+    fetchProjects();
+  }, []);
+
+  const handleStartRename = (project: { name: string, path: string }) => {
+    setEditingPath(project.path);
+    setEditName(project.name);
+  };
+
+  const handleSaveRename = async () => {
+    if (editingPath && editName.trim()) {
+      await renameProject(editingPath, editName.trim());
+      setEditingPath(null);
+    }
+  };
 
   const toggleGuide = (name: string) => {
     setExpandedGuide(expandedGuide === name ? null : name);
@@ -146,13 +171,19 @@ const SettingsView: React.FC = () => {
             <span style={{ marginLeft: 6 }}>ACCOUNT</span>
           </button>
         )}
+        {isElectron && (
+          <button className={`tab ${activeSection === 'projects' ? 'active' : ''}`} onClick={() => setActiveSection('projects')}>
+            <Database size={12} />
+            <span style={{ marginLeft: 6 }}>PROJECTS</span>
+          </button>
+        )}
         <button className={`tab ${activeSection === 'install' ? 'active' : ''}`} onClick={() => setActiveSection('install')}>
           <Terminal size={12} />
           <span style={{ marginLeft: 6 }}>INSTALL MCP</span>
         </button>
         {isElectron && (
           <button className={`tab ${activeSection === 'auto' ? 'active' : ''}`} onClick={() => setActiveSection('auto')}>
-            <Database size={12} />
+            <RefreshCw size={12} />
             <span style={{ marginLeft: 6 }}>AUTO-REGISTER</span>
           </button>
         )}
@@ -163,6 +194,85 @@ const SettingsView: React.FC = () => {
       </div>
 
       <div className="detail-body">
+        {/* ===================== PROJECTS SECTION ===================== */}
+        {activeSection === 'projects' && (
+          <div className="card-obsidian">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <h1>Project Management</h1>
+              <button 
+                className="btn-primary-capture" 
+                onClick={() => runDiscovery()} 
+                disabled={discoveryLoading}
+                style={{ gap: 8 }}
+              >
+                {discoveryLoading ? <Loader2 size={14} className="spin" /> : <Search size={14} />}
+                Discover Solutions
+              </button>
+            </div>
+
+            <p className="description">
+              Manage your registered database solutions. You can rename them for better organization or remove obsolete test projects.
+            </p>
+
+            <div className="ide-list" style={{ marginTop: 20 }}>
+              {projects.length === 0 && !discoveryLoading && (
+                <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--text-muted)' }}>
+                  <Plus size={32} style={{ opacity: 0.2, marginBottom: 16 }} />
+                  <p>No projects found. Use "Discover" to find solutions with a .dbcanvas folder.</p>
+                </div>
+              )}
+
+              {projects.map(project => (
+                <div key={project.path} className="ide-row" style={{ alignItems: 'flex-start' }}>
+                  <div className="ide-info" style={{ flex: 1 }}>
+                    {editingPath === project.path ? (
+                      <div style={{ display: 'flex', gap: 8, width: '100%' }}>
+                        <input 
+                          type="text" 
+                          className="input-dark" 
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          autoFocus
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                          style={{ flex: 1, fontSize: 13, padding: '4px 8px' }}
+                        />
+                        <button className="btn-sm btn-primary" onClick={handleSaveRename}><Save size={12} /></button>
+                        <button className="btn-sm btn-secondary" onClick={() => setEditingPath(null)}><X size={12} /></button>
+                      </div>
+                    ) : (
+                      <div className="ide-name" style={{ justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Database size={14} />
+                          <span style={{ fontWeight: 600 }}>{project.name}</span>
+                        </div>
+                        <button className="btn-icon-only" onClick={() => handleStartRename(project)}>
+                          <Edit size={12} />
+                        </button>
+                      </div>
+                    )}
+                    <code className="ide-path" style={{ marginTop: 4, display: 'block', fontSize: 11, opacity: 0.6 }}>
+                      {project.path}
+                    </code>
+                  </div>
+                  
+                  <div className="ide-status" style={{ marginLeft: 16 }}>
+                    <button 
+                      className="btn-sm btn-danger" 
+                      onClick={() => {
+                        if (confirm(`Remove project "${project.name}" from registry? (This won't delete files)`)) {
+                          deleteProject(project.path);
+                        }
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ===================== ACCOUNT SECTION ===================== */}
         {activeSection === 'account' && (
           <>

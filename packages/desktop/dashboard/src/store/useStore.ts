@@ -60,8 +60,9 @@ interface AppState {
   shadowData: any[];
 
   // Project
-  projects: string[];
+  projects: api.RegisteredProject[];
   status: { projectRoot: string; databasePath: string; configSource?: string } | null;
+  discoveryLoading: boolean;
 
   // IDE
   ides: IdeInfo[];
@@ -86,6 +87,9 @@ interface AppState {
   runSync: () => Promise<void>;
   fetchProjects: () => Promise<void>;
   fetchStatus: () => Promise<void>;
+  deleteProject: (projectPath: string) => Promise<void>;
+  renameProject: (projectPath: string, newName: string) => Promise<void>;
+  runDiscovery: (searchPath?: string) => Promise<void>;
   selectNode: (node: GraphNode | null) => void;
   setSearchTerm: (term: string) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -128,6 +132,7 @@ export const useStore = create<AppState>((set, get) => ({
   shadowData: [],
   projects: [],
   status: null,
+  discoveryLoading: false,
   ides: [],
   ideMessage: '',
   session: null,
@@ -161,6 +166,30 @@ export const useStore = create<AppState>((set, get) => ({
 
   fetchProjects: async () => {
     try { set({ projects: await api.getProjects() }); } catch {}
+  },
+
+  deleteProject: async (path) => {
+    try {
+      await api.deleteProject(path);
+      await get().fetchProjects();
+    } catch {}
+  },
+
+  renameProject: async (path, newName) => {
+    try {
+      await api.renameProject(path, newName);
+      await get().fetchProjects();
+    } catch {}
+  },
+
+  runDiscovery: async (searchPath) => {
+    set({ discoveryLoading: true });
+    try {
+      await api.runDiscovery(searchPath);
+      await get().fetchProjects();
+    } catch {} finally {
+      set({ discoveryLoading: false });
+    }
   },
 
   fetchStatus: async () => {

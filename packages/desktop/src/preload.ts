@@ -59,6 +59,15 @@ contextBridge.exposeInMainWorld('dbcanvas', {
 
   // Updates
   installUpdate: () => ipcRenderer.invoke('dbcanvas:install-update'),
+
+  // Project Management (New)
+  deleteProject: (projectPath: string) => 
+    ipcRenderer.invoke('dbcanvas:delete-project', projectPath),
+  renameProject: (projectPath: string, newName: string) => 
+    ipcRenderer.invoke('dbcanvas:rename-project', projectPath, newName),
+  runDiscovery: (searchPath?: string) => 
+    ipcRenderer.invoke('dbcanvas:run-discovery', searchPath),
+
   onUpdateAvailable: (callback: (info: any) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, info: any) => callback(info);
     ipcRenderer.on('dbcanvas:update-available', handler);

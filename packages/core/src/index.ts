@@ -40,5 +40,8 @@ export {
   discoverConnectionString,
   findSolutionRoot,
   getRegisteredProjects,
+  removeProject,
+  updateProjectName,
+  discoverLocalProjects,
 } from './config.js';
-export type { DbConfig } from './config.js';
+export type { DbConfig, RegisteredProject } from './config.js';

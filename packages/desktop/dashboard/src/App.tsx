@@ -145,6 +145,7 @@ const App: React.FC = () => {
 
   return (
     <div className="obsidian-app">
+      <div className="titlebar-drag" />
       <Sidebar />
       <TreeExplorer />
       <NotificationToast />

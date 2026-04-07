@@ -8,10 +8,30 @@ function getProjectPath(): string {
   return urlParams.get('projectPath') || '';
 }
 
-export async function getProjects(): Promise<string[]> {
+export interface RegisteredProject {
+  name: string;
+  path: string;
+}
+
+export async function getProjects(): Promise<RegisteredProject[]> {
   if (isElectron) return window.dbcanvas.getProjects();
   const res = await fetch('/api/projects');
   return res.json();
+}
+
+export async function deleteProject(projectPath: string) {
+  if (isElectron) return window.dbcanvas.deleteProject(projectPath);
+  return { success: true };
+}
+
+export async function renameProject(projectPath: string, newName: string) {
+  if (isElectron) return window.dbcanvas.renameProject(projectPath, newName);
+  return { success: true };
+}
+
+export async function runDiscovery(searchPath?: string) {
+  if (isElectron) return window.dbcanvas.runDiscovery(searchPath);
+  return [];
 }
 
 export async function getStatus(projectPath?: string) {

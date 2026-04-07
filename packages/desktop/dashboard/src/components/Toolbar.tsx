@@ -1,5 +1,4 @@
-import React from 'react';
-import { File, Layers, Settings, X, Search } from 'lucide-react';
+import { File, Layers, Settings, X, Search, Maximize } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import ExportMenu from './ExportMenu';
 
@@ -21,13 +20,23 @@ const Toolbar: React.FC = () => {
 
       <div className="spacer" />
 
-      <ExportMenu />
+      <div className="global-actions">
+        <button className="btn-cmd-k" onClick={() => {
+          const ref = (window as any).__dbcanvas_graph_ref?.current;
+          if (ref) ref.zoomToFit(400, 50);
+        }} title="Fit Graph to View">
+          <Maximize size={12} />
+          <span>Fit View</span>
+        </button>
 
-      <button className="btn-cmd-k" onClick={() => setCommandPaletteOpen(true)} title="Command Palette (Cmd+K)">
-        <Search size={12} />
-        <span>Search</span>
-        <kbd>⌘K</kbd>
-      </button>
+        <ExportMenu />
+
+        <button className="btn-cmd-k" onClick={() => setCommandPaletteOpen(true)} title="Command Palette (Cmd+K)">
+          <Search size={12} />
+          <span>Search</span>
+          <kbd className="hide-mobile">⌘K</kbd>
+        </button>
+      </div>
 
       {(selectedNode || viewMode === 'settings') && (
         <button className="btn-close-detail" onClick={backToGraph}>
