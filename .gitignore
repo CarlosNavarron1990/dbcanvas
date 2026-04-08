@@ -31,3 +31,4 @@ packages/platform/data/
 
 # Electron build output
 release/
+packages/platform/public/downloads/
