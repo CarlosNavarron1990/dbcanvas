@@ -109,7 +109,7 @@ app.get('/api/download/:platform', (req, res) => {
 const adminDist = path.join(__dirname, '..', 'admin', 'dist');
 if (fs.existsSync(adminDist)) {
   app.use(express.static(adminDist));
-  app.get('(.*)', (_req, res) => {
+  app.use((_req, res) => {
     res.sendFile(path.join(adminDist, 'index.html'));
   });
 }
