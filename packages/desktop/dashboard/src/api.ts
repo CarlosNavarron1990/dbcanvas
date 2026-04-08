@@ -1,7 +1,10 @@
 /**
  * API adapter: Uses IPC bridge when running in Electron, falls back to HTTP for standalone dev.
  */
-const isElectron = typeof window !== 'undefined' && !!(window as any).dbcanvas;
+export const isElectron = typeof window !== 'undefined' && !!(window as any).dbcanvas;
+// Use a function to ensure we check the presence of the bridge every time if needed, 
+// though const should technically work if the bridge is injected early enough.
+// To be safe, let's keep it as is but ensure we don't shadow it.
 
 function getProjectPath(): string {
   const urlParams = new URLSearchParams(window.location.search);
@@ -142,4 +145,4 @@ export function onNotification(callback: (data: { type: string; name: string }) 
   return () => eventSource.close();
 }
 
-export { isElectron, getProjectPath };
+export { getProjectPath };

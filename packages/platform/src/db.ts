@@ -6,7 +6,15 @@ let pool: pg.Pool | null = null;
 
 export function getPool(): pg.Pool {
   if (pool) return pool;
-  pool = new pg.Pool({ connectionString: DATABASE_URL, max: 10 });
+  
+  const isLocal = DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1');
+  
+  pool = new pg.Pool({ 
+    connectionString: DATABASE_URL, 
+    max: 10,
+    ssl: isLocal ? false : { rejectUnauthorized: false }
+  });
+  
   return pool;
 }
 

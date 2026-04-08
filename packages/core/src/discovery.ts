@@ -178,38 +178,110 @@ export interface GraphQueryOptions {
 }
 
 export async function getDiscoveryGraph(projectPathOverride?: string, options?: GraphQueryOptions) {
-  const db = await getLocalDb(projectPathOverride);
+  let db: any = null;
+  const nodes: any[] = [];
+  const edges: any[] = [];
+  let totalCount = 0;
 
-  let nodesQuery = db('nodes').select('*');
-  if (options?.type) {
-    nodesQuery = nodesQuery.where('type', options.type);
-  }
-  if (options?.offset) {
-    nodesQuery = nodesQuery.offset(options.offset);
-  }
-  if (options?.limit) {
-    nodesQuery = nodesQuery.limit(options.limit);
+  // 1. Try to get Database connection
+  try {
+    db = await getLocalDb(projectPathOverride);
+  } catch (e) {
+    log.warn({ error: e }, 'Failed to initialize local discovery database, falling back to file-only discovery');
   }
 
-  const nodes = await nodesQuery;
+  // 2. Scan file-system procedures (Always do this for robustness)
+  const config = discoverConnectionString(projectPathOverride);
+  const root = config?.solutionRoot || projectPathOverride || process.cwd();
+  const procDir = path.join(root, '.dbcanvas', 'procedures');
+  
+  if (fs.existsSync(procDir)) {
+    try {
+      const files = fs.readdirSync(procDir);
+      for (const file of files) {
+        if (file.endsWith('.md')) {
+          const fileName = path.basename(file, '.md');
+          
+          // Try to find a "dot-normalized" version to check for duplicates
+          // e.g. Integracion_Get_Something -> Integracion.Get_Something
+          const normalizedName = fileName.replace('_', '.');
+          const idLiteral = `sp:${fileName}`;
+          const idNormalized = `sp:${normalizedName}`;
+          
+          if (db) {
+            // Check if either version already exists
+            const existing = await db('nodes')
+              .where('id', idLiteral)
+              .orWhere('id', idNormalized)
+              .first();
+            
+            if (!existing) {
+              await db('nodes').insert({
+                id: idNormalized, // Prefer normalized (dotted) ID for consistency
+                name: normalizedName,
+                type: 'PROCEDURE',
+              }).onConflict('id').ignore();
+            }
+          } else {
+            // Deduplicate in memory if no DB
+            if (!nodes.find(n => n.id === idLiteral || n.id === idNormalized)) {
+              nodes.push({ id: idNormalized, name: normalizedName, type: 'PROCEDURE' });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log.error({ error: e }, 'Failed to scan procedures directory');
+    }
+  }
 
-  // Get edges only for the nodes in the result set
-  let edges;
-  if (options?.type || options?.limit) {
-    const nodeIds = nodes.map((n: any) => n.id);
-    edges = await db('edges').select('*')
-      .whereIn('source', nodeIds)
-      .orWhereIn('target', nodeIds);
+  // 3. Query Database if available
+  if (db) {
+    try {
+      let nodesQuery = db('nodes').select('*');
+      if (options?.type) {
+        nodesQuery = nodesQuery.where('type', options.type);
+      }
+      if (options?.offset) {
+        nodesQuery = nodesQuery.offset(options.offset);
+      }
+      if (options?.limit) {
+        nodesQuery = nodesQuery.limit(options.limit);
+      }
+
+      const dbNodes = await nodesQuery;
+      nodes.push(...dbNodes.map((n: any) => ({ id: n.id, name: n.name, type: n.type })));
+
+      // Get edges only for the nodes in the result set
+      let dbEdges;
+      if (options?.type || options?.limit) {
+        const nodeIds = nodes.map((n: any) => n.id);
+        dbEdges = await db('edges').select('*')
+          .whereIn('source', nodeIds)
+          .orWhereIn('target', nodeIds);
+      } else {
+        dbEdges = await db('edges').select('*');
+      }
+      edges.push(...dbEdges.map((e: any) => ({ source: e.source, target: e.target, type: e.type, label: e.label })));
+
+      const totalNodes = await db('nodes').count('id as count').first();
+      totalCount = Number(totalNodes?.count || 0);
+    } catch (e) {
+      log.error({ error: e }, 'Error querying discovery database during graph generation');
+    }
   } else {
-    edges = await db('edges').select('*');
+    // If no DB, totalCount is just the nodes we found in files
+    totalCount = nodes.length;
   }
 
-  const totalNodes = await db('nodes').count('id as count').first();
+  // Deduplicate nodes by ID (in case some were in both DB and FS)
+  const uniqueNodesMap = new Map();
+  nodes.forEach(n => uniqueNodesMap.set(n.id, n));
 
   return {
-    nodes: nodes.map((n: any) => ({ id: n.id, name: n.name, type: n.type })),
-    links: edges.map((e: any) => ({ source: e.source, target: e.target, type: e.type, label: e.label })),
-    total: Number(totalNodes?.count || 0),
+    nodes: Array.from(uniqueNodesMap.values()),
+    links: edges,
+    total: totalCount,
   };
 }
 

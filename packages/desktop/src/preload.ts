@@ -60,6 +60,10 @@ contextBridge.exposeInMainWorld('dbcanvas', {
   // Updates
   installUpdate: () => ipcRenderer.invoke('dbcanvas:install-update'),
 
+  // Environment
+  getPlatform: () => ipcRenderer.invoke('dbcanvas:get-platform'),
+  getMcpPath: () => ipcRenderer.invoke('dbcanvas:get-mcp-path'),
+
   // Project Management (New)
   deleteProject: (projectPath: string) => 
     ipcRenderer.invoke('dbcanvas:delete-project', projectPath),

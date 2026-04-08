@@ -83,13 +83,25 @@ export function startServer(port: number = 3000) {
       const projectPath = req.query.projectPath as string;
       const config = discoverConnectionString(projectPath);
       const root = config?.solutionRoot || projectPath || process.cwd();
-      const mdPath = path.join(root, '.dbcanvas', 'procedures', `${sanitizeParam(req.params.name)}.md`);
+      const procDir = path.join(root, '.dbcanvas', 'procedures');
+      const name = sanitizeParam(req.params.name);
+      
       const fs = await import('fs');
+      
+      // Pattern 1: Literal
+      const mdPath = path.join(procDir, `${name}.md`);
       if (fs.existsSync(mdPath)) {
-        sendJson(res, { content: fs.readFileSync(mdPath, 'utf8') });
-      } else {
-        sendError(res, 404, 'Markdown file not found locally');
+        return sendJson(res, { content: fs.readFileSync(mdPath, 'utf8') });
       }
+
+      // Pattern 2: Dot to Underscore
+      const underscoreName = name.replace('.', '_');
+      const mdPathUnderscore = path.join(procDir, `${underscoreName}.md`);
+      if (fs.existsSync(mdPathUnderscore)) {
+        return sendJson(res, { content: fs.readFileSync(mdPathUnderscore, 'utf8') });
+      }
+
+      sendError(res, 404, 'Markdown file not found locally');
     } catch (e: any) {
       sendError(res, 500, e.message);
     }
@@ -183,6 +195,6 @@ export function startServer(port: number = 3000) {
   });
 }
 
-if (process.argv[1] === __filename || process.argv[1].endsWith('server.js')) {
+if (process.argv[1] === __filename || process.argv[1]?.endsWith('server.js')) {
   startServer(Number(process.env.PORT) || 3000);
 }

@@ -12,12 +12,23 @@ const { autoUpdater } = electronUpdater;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Error tracking
+process.on('uncaughtException', (error) => {
+  console.error('CRITICAL: Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 let mainWindow: BrowserWindow | null = null;
 let expressServer: ReturnType<typeof startServer> | null = null;
 
 // Single-instance lock: ensure only one DBCanvas window is active at a time
 const gotLock = app.requestSingleInstanceLock();
+console.log('Single Instance Lock status:', gotLock);
 if (!gotLock) {
+  console.log('Another instance is running. Quitting...');
   app.quit();
   process.exit(0);
 }
@@ -53,10 +64,11 @@ async function createWindow() {
 
   // Start Express for MCP bridge notifications (SSE) and as fallback
   try {
+    console.log('Attempting to start Express server...');
     expressServer = startServer(3000);
-    console.log('Express server started on port 3000 (MCP bridge)');
+    console.log('Express server started successfully on port 3000');
   } catch (e) {
-    console.error('Failed to start Express server:', e);
+    console.error('CRITICAL: Failed to start Express server:', e);
   }
 
   // In production, load from dashboard dist; in dev, load from vite dev server or dist

@@ -5,10 +5,7 @@ import {
   Search, Plus, Save, X, Loader2 
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { isElectron } from '../api';
-
-// The canonical MCP server path
-const MCP_SERVER_PATH = '/Users/xmn/Desarrollos/PlugginSQLAgent/packages/mcp-server/build/index.js';
+import { isElectron as importedIsElectron } from '../api';
 
 interface IdeInstallInfo {
   name: string;
@@ -18,106 +15,77 @@ interface IdeInstallInfo {
   description: string;
 }
 
-const ideInstallGuides: IdeInstallInfo[] = [
-  {
-    name: 'Claude Desktop',
-    icon: 'C',
-    configFile: '~/Library/Application Support/Claude/claude_desktop_config.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
+/**
+ * Generate all IDE guides based on real platform and path
+ */
+function getIdeInstallGuides(platform: string, mcpPath: string): IdeInstallInfo[] {
+  const isWin = platform === 'win32';
+  const homeLabel = isWin ? '%USERPROFILE%' : '~';
+  const appDataLabel = isWin ? '%APPDATA%' : '~/Library/Application Support';
+
+  const mcpEntry = (path: string) => JSON.stringify({
+    mcpServers: {
+      dbcanvas: {
+        command: 'node',
+        args: [path],
       },
-    }, null, 2),
-    description: 'Add to your claude_desktop_config.json (merge with existing mcpServers)',
-  },
-  {
-    name: 'Claude Code (CLI)',
-    icon: '>',
-    configFile: '~/.claude/claude_desktop_config.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Add to your Claude Code config file',
-  },
-  {
-    name: 'Cursor',
-    icon: '{',
-    configFile: '~/.cursor/mcp.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Add to your Cursor MCP config',
-  },
-  {
-    name: 'Windsurf',
-    icon: 'W',
-    configFile: '~/.windsurf/mcp.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Add to your Windsurf MCP config',
-  },
-  {
-    name: 'Antigravity',
-    icon: 'A',
-    configFile: '~/.antigravity/mcp.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Create or add to your Antigravity MCP config',
-  },
-  {
-    name: 'VS Code (Copilot)',
-    icon: 'V',
-    configFile: '~/.vscode/mcp.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Add to your VS Code MCP config (requires Copilot MCP extension)',
-  },
-  {
-    name: 'Codex (OpenAI)',
-    icon: 'O',
-    configFile: '~/.codex/mcp.json',
-    configJson: JSON.stringify({
-      mcpServers: {
-        dbcanvas: {
-          command: 'node',
-          args: [MCP_SERVER_PATH],
-        },
-      },
-    }, null, 2),
-    description: 'Add to your Codex MCP config',
-  },
-];
+    },
+  }, null, 2);
+
+  return [
+    {
+      name: 'Claude Desktop',
+      icon: 'C',
+      configFile: isWin 
+        ? `${appDataLabel}\\Claude\\claude_desktop_config.json`
+        : `${homeLabel}/Library/Application Support/Claude/claude_desktop_config.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your claude_desktop_config.json (merge with existing mcpServers)',
+    },
+    {
+      name: 'Claude Code (CLI)',
+      icon: '>',
+      configFile: isWin ? `${homeLabel}\\.claude\\claude_desktop_config.json` : `${homeLabel}/.claude/claude_desktop_config.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your Claude Code config file',
+    },
+    {
+      name: 'Cursor',
+      icon: '{',
+      configFile: isWin ? `${homeLabel}\\.cursor\\mcp.json` : `${homeLabel}/.cursor/mcp.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your Cursor MCP config',
+    },
+    {
+      name: 'Windsurf',
+      icon: 'W',
+      configFile: isWin ? `${homeLabel}\\.windsurf\\mcp.json` : `${homeLabel}/.windsurf/mcp.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your Windsurf MCP config',
+    },
+    {
+      name: 'Antigravity',
+      icon: 'A',
+      configFile: isWin ? `${homeLabel}\\.antigravity\\mcp.json` : `${homeLabel}/.antigravity/mcp.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Create or add to your Antigravity MCP config',
+    },
+    {
+      name: 'VS Code (Copilot)',
+      icon: 'V',
+      configFile: isWin ? `${homeLabel}\\.vscode\\mcp.json` : `${homeLabel}/.vscode/mcp.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your VS Code MCP config (requires Copilot MCP extension)',
+    },
+    {
+      name: 'Codex (OpenAI)',
+      icon: 'O',
+      configFile: isWin ? `${homeLabel}\\.codex\\mcp.json` : `${homeLabel}/.codex/mcp.json`,
+      configJson: mcpEntry(mcpPath),
+      description: 'Add to your Codex MCP config',
+    },
+  ];
+}
 
 function copyToClipboard(text: string, setCopied: (id: string) => void, id: string) {
   navigator.clipboard.writeText(text).then(() => {
@@ -127,15 +95,23 @@ function copyToClipboard(text: string, setCopied: (id: string) => void, id: stri
 }
 
 const SettingsView: React.FC = () => {
+  // Use a local check for Electron to be 100% sure it's reactive if the bridge injects late
+  const isElectron = typeof window !== 'undefined' && (!!(window as any).dbcanvas || importedIsElectron);
+
   const {
     ides, ideMessage, theme, session, updateStatus, updateVersion,
     projects, discoveryLoading,
     loadIdes, registerIde, unregisterIde, registerAllIdes, toggleTheme, logout,
     deleteProject, renameProject, runDiscovery, fetchProjects
   } = useStore();
+  
   const [copied, setCopied] = useState('');
   const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<'account' | 'projects' | 'install' | 'auto' | 'theme'>(isElectron ? 'projects' : 'install');
+
+  // Dynamic environment info
+  const [mcpPath, setMcpPath] = useState('');
+  const [platform, setPlatform] = useState('darwin');
 
   // Local state for renaming
   const [editingPath, setEditingPath] = useState<string | null>(null);
@@ -144,6 +120,19 @@ const SettingsView: React.FC = () => {
   useEffect(() => { 
     loadIdes(); 
     fetchProjects();
+
+    // Fetch dynamic path and platform if in Electron
+    if (isElectron && (window as any).dbcanvas) {
+      if ((window as any).dbcanvas.getMcpPath) {
+        (window as any).dbcanvas.getMcpPath().then(setMcpPath);
+      }
+      if ((window as any).dbcanvas.getPlatform) {
+        (window as any).dbcanvas.getPlatform().then(setPlatform);
+      }
+    } else {
+      // Fallback for web preview
+      setMcpPath('/path/to/dbcanvas/mcp-server/index.mjs');
+    }
   }, []);
 
   const handleStartRename = (project: { name: string, path: string }) => {
@@ -161,6 +150,8 @@ const SettingsView: React.FC = () => {
   const toggleGuide = (name: string) => {
     setExpandedGuide(expandedGuide === name ? null : name);
   };
+
+  const ideInstallGuides = getIdeInstallGuides(platform, mcpPath);
 
   return (
     <div className="detail-central-view slide-up">
@@ -357,10 +348,11 @@ const SettingsView: React.FC = () => {
               <div className="mcp-path-box">
                 <label>MCP SERVER PATH</label>
                 <div className="mcp-path-row">
-                  <code>{MCP_SERVER_PATH}</code>
+                  <code>{mcpPath || 'Loading...'}</code>
                   <button
                     className={`btn-sm btn-copy ${copied === 'path' ? 'copied' : ''}`}
-                    onClick={() => copyToClipboard(MCP_SERVER_PATH, setCopied, 'path')}
+                    onClick={() => copyToClipboard(mcpPath, setCopied, 'path')}
+                    disabled={!mcpPath}
                   >
                     {copied === 'path' ? <><Check size={12} /> Copied</> : <><Copy size={12} /> Copy</>}
                   </button>
@@ -374,7 +366,7 @@ const SettingsView: React.FC = () => {
 
             {/* IDE Guides */}
             <div className="card-obsidian" style={{ marginTop: 16 }}>
-              <h2>Configuration per IDE</h2>
+              <h2>Configuration per IDE ({platform})</h2>
               <div className="ide-guides">
                 {ideInstallGuides.map(guide => (
                   <div key={guide.name} className="guide-item">
@@ -383,7 +375,7 @@ const SettingsView: React.FC = () => {
                       <div className="guide-icon">{guide.icon}</div>
                       <div className="guide-title">
                         <span className="guide-name">{guide.name}</span>
-                        <span className="guide-file">{guide.configFile}</span>
+                        <span className="guide-file" title={guide.configFile}>{guide.configFile.length > 40 ? '...' + guide.configFile.slice(-37) : guide.configFile}</span>
                       </div>
                       <button
                         className={`btn-sm btn-copy ${copied === guide.name ? 'copied' : ''}`}
@@ -405,7 +397,15 @@ const SettingsView: React.FC = () => {
                             <span>Add the following JSON (merge into existing <code>mcpServers</code> if present):</span>
                           </div>
                         </div>
-                        <pre className="guide-code">{guide.configJson}</pre>
+                        <div style={{ position: 'relative' }}>
+                          <pre className="guide-code">{guide.configJson}</pre>
+                          <button
+                             style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.05)', border: 'none', borderRadius: 4, padding: 4, cursor: 'pointer', color: 'var(--text-muted)' }}
+                             onClick={() => copyToClipboard(guide.configJson, setCopied, guide.name)}
+                          >
+                            <Copy size={14} />
+                          </button>
+                        </div>
                         <div className="step">
                           <span className="step-num">3</span>
                           <span>Restart the IDE to activate DBCanvas</span>

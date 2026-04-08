@@ -1,0 +1,34 @@
+
+> dbcanvas@1.1.1 start:desktop
+> npm run build:core && npm run start -w @dbcanvas/desktop
+
+
+> dbcanvas@1.1.1 build:core
+> npm run build -w @dbcanvas/core
+
+
+> @dbcanvas/core@1.1.0 build
+> tsc
+
+
+> @dbcanvas/desktop@1.1.1 start
+> npm run build && electron .
+
+
+> @dbcanvas/desktop@1.1.1 build
+> tsc && npx esbuild src/preload.ts --bundle --platform=node --format=cjs --outfile=build/preload.js --external:electron
+
+
+  build/preload.js  3.8kb
+
+⚡ Done in 7ms
+Express server started on port 3000 (MCP bridge)
+DBCanvas server running at http://127.0.0.1:3000
+/Users/xmn/Desarrollos/PlugginSQLAgent/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron exited with signal SIGKILL
+npm error Lifecycle script `start` failed with error:
+npm error code 1
+npm error path /Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+npm error workspace @dbcanvas/desktop@1.1.1
+npm error location /Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+npm error command failed
+npm error command sh -c npm run build && electron .

@@ -2,6 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { app } from 'electron';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 interface IdeConfig {
   name: string;
@@ -50,10 +54,14 @@ function getIdeConfigPaths(): { name: string; path: string }[] {
 }
 
 /** Get the path to the MCP server entry point */
-function getMcpServerPath(): string {
+export function getMcpServerPath(): string {
   if (app.isPackaged) {
-    // In packaged app, MCP server is the esbuild bundle in resources/mcp-server
-    return path.join(process.resourcesPath, 'mcp-server', 'index.mjs');
+    // app.getAppPath() usually points to resources/app.asar
+    // We want the sibling 'mcp-server' folder inside 'resources'
+    const resourcesPath = path.dirname(app.getAppPath());
+    const mcpPath = path.resolve(path.join(resourcesPath, 'mcp-server', 'index.mjs'));
+    console.log('Detected Packaged MCP Path:', mcpPath);
+    return mcpPath;
   }
   // In development, point to the workspace build
   return path.resolve(path.join(__dirname, '..', '..', 'mcp-server', 'build', 'index.js'));

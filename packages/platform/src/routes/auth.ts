@@ -76,16 +76,29 @@ router.get('/google/callback', async (req: Request, res: Response) => {
   const code = req.query.code as string;
   if (!code) { sendError(res, 400, 'Missing code'); return; }
   try {
+    console.log('[auth] Exchanging Google auth code for token...');
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, client_id: env('GOOGLE_CLIENT_ID'), client_secret: env('GOOGLE_CLIENT_SECRET'), redirect_uri: env('PLATFORM_URL') + '/api/auth/google/callback', grant_type: 'authorization_code' }),
     });
     const tokenData = await tokenRes.json() as any;
-    if (!tokenData.access_token) throw new Error('Google token exchange failed');
+    if (!tokenData.access_token) {
+      console.error('[auth] Google token exchange failed:', tokenData);
+      throw new Error('Google token exchange failed');
+    }
+    
+    console.log('[auth] Fetching Google user info...');
     const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', { headers: { Authorization: `Bearer ${tokenData.access_token}` } });
     const gUser = await userRes.json() as any;
-    if (!gUser.email) throw new Error('Could not get email from Google');
+    if (!gUser.email) {
+      console.error('[auth] Google user info missing email:', gUser);
+      throw new Error('Could not get email from Google');
+    }
+    
+    console.log('[auth] Finding or creating user in database:', gUser.email);
     const result = await findOrCreateOAuthUser(gUser.email, gUser.name || '');
+    
+    console.log('[auth] Google login successful, redirecting to frontend...');
     res.redirect(`${env('FRONTEND_URL') || 'https://dbcanvas-web.vercel.app'}/auth/callback?token=${result.token}&provider=google`);
   } catch (err: any) { sendError(res, 500, err.message); }
 });

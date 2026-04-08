@@ -1,6 +1,6 @@
 {
   "name": "@dbcanvas/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Shared database, discovery, and config logic for DBCanvas",
   "type": "module",
   "main": "build/index.js",

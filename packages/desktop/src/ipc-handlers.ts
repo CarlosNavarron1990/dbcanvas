@@ -7,7 +7,7 @@ import {
   getProcedureCode, getTableColumns,
   removeProject, updateProjectName, discoverLocalProjects,
 } from '@dbcanvas/core';
-import { detectInstalledIdes, registerInIde, unregisterFromIde, registerInAllIdes } from './ide-registrar.js';
+import { detectInstalledIdes, registerInIde, unregisterFromIde, registerInAllIdes, getMcpServerPath } from './ide-registrar.js';
 
 export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:get-projects', async () => {
@@ -55,10 +55,21 @@ export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:get-procedure-md', async (_event, name: string, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
     const root = config?.solutionRoot || projectPath || process.cwd();
-    const mdPath = path.join(root, '.dbcanvas', 'procedures', `${name}.md`);
+    const procDir = path.join(root, '.dbcanvas', 'procedures');
+    
+    // Pattern 1: Literal name (e.g. Integracion.Something.md or Integracion_Something.md)
+    const mdPath = path.join(procDir, `${name}.md`);
     if (fs.existsSync(mdPath)) {
       return fs.readFileSync(mdPath, 'utf8');
     }
+
+    // Pattern 2: Normalize dot to underscore (e.g. Integracion.Something -> Integracion_Something.md)
+    const underscoreName = name.replace('.', '_');
+    const mdPathUnderscore = path.join(procDir, `${underscoreName}.md`);
+    if (fs.existsSync(mdPathUnderscore)) {
+      return fs.readFileSync(mdPathUnderscore, 'utf8');
+    }
+
     return null;
   });
 
@@ -131,6 +142,14 @@ export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:run-discovery', async (_event, searchPath?: string) => {
     const startPath = searchPath || process.env.HOME || '.';
     return discoverLocalProjects(startPath);
+  });
+
+  ipcMain.handle('dbcanvas:get-platform', async () => {
+    return process.platform;
+  });
+
+  ipcMain.handle('dbcanvas:get-mcp-path', async () => {
+    return getMcpServerPath();
   });
 }
 
