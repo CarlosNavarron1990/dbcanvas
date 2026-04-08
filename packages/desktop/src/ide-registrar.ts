@@ -59,12 +59,12 @@ export function getMcpServerPath(): string {
     // app.getAppPath() usually points to resources/app.asar
     // We want the sibling 'mcp-server' folder inside 'resources'
     const resourcesPath = path.dirname(app.getAppPath());
-    const mcpPath = path.resolve(path.join(resourcesPath, 'mcp-server', 'index.mjs'));
+    const mcpPath = path.resolve(path.join(resourcesPath, 'mcp-server', 'index.cjs'));
     console.log('Detected Packaged MCP Path:', mcpPath);
     return mcpPath;
   }
   // In development, point to the workspace build
-  return path.resolve(path.join(__dirname, '..', '..', 'mcp-server', 'build', 'index.js'));
+  return path.resolve(path.join(__dirname, '..', '..', 'mcp-server', 'build', 'bundle.cjs'));
 }
 
 /** Build the MCP server entry for IDE config files */

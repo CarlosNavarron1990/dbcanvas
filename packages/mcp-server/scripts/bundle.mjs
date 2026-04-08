@@ -4,8 +4,16 @@ await build({
   entryPoints: ['src/index.ts'],
   bundle: true,
   platform: 'node',
-  format: 'esm',
-  outfile: 'build/bundle.mjs',
+  format: 'cjs',
+  outfile: 'build/bundle.cjs',
+  define: {
+    // In CJS bundles, import.meta.url is undefined. Replace it with a CommonJS equivalent.
+    'import.meta.url': '__filename_url__',
+  },
+  banner: {
+    // Define the replacement variable at the top of the bundle
+    js: `var __filename_url__ = require('url').pathToFileURL(__filename).href;`,
+  },
   external: [
     'sqlite3',
     'better-sqlite3',
@@ -16,16 +24,6 @@ await build({
     'oracledb',
     'pg-query-stream',
   ],
-  banner: {
-    js: `
-import { createRequire } from "module";
-import { fileURLToPath as __fileURLToPath } from "url";
-import { dirname as __pathDirname } from "path";
-const require = createRequire(import.meta.url);
-const __filename = __fileURLToPath(import.meta.url);
-const __dirname = __pathDirname(__filename);
-`.trim(),
-  },
 });
 
-console.log('Bundled MCP server -> build/bundle.mjs');
+console.log('Bundled MCP server -> build/bundle.cjs');
