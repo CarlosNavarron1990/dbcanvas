@@ -77,29 +77,8 @@
         ]
       },
       {
-        "from": "../../node_modules/pino",
-        "to": "mcp-server/node_modules/pino",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../../node_modules/thread-stream",
-        "to": "mcp-server/node_modules/thread-stream",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../../node_modules/pino-std-serializers",
-        "to": "mcp-server/node_modules/pino-std-serializers",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../../node_modules/sonic-boom",
-        "to": "mcp-server/node_modules/sonic-boom",
-        "filter": ["**/*"]
-      },
-      {
-        "from": "../../node_modules/on-exit-leak-free",
-        "to": "mcp-server/node_modules/on-exit-leak-free",
-        "filter": ["**/*"]
+        "from": "../../node_modules/thread-stream/lib/worker.js",
+        "to": "mcp-server/lib/worker.js"
       }
     ],
     "mac": {
