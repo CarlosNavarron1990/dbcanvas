@@ -16,19 +16,43 @@ export async function createDbClient(connectionString: string, queryTimeout?: nu
     clientType = 'mssql';
     if (connectionString.includes(';')) {
       const parts = connectionString.split(';');
-      const config: any = { options: { encrypt: false, trustServerCertificate: true } };
+      const config: any = {
+        options: {
+          encrypt: false,
+          trustServerCertificate: true,
+          connectTimeout: 30000,       // 30s for initial connection
+          requestTimeout: 60000,       // 60s for queries
+          cancelTimeout: 5000,
+        }
+      };
       parts.forEach(part => {
         const eqIndex = part.indexOf('=');
         if (eqIndex < 0) return;
         const key = part.substring(0, eqIndex).trim().toLowerCase();
         const value = part.substring(eqIndex + 1).trim();
         if (!key || !value) return;
-        if (key === 'data source' || key === 'server') config.server = value;
+        if (key === 'data source' || key === 'server') {
+          // Split named instance: "192.168.7.4\BURO" → server + instanceName
+          const backslashIdx = value.indexOf('\\');
+          if (backslashIdx > -1) {
+            config.server = value.substring(0, backslashIdx);
+            config.options.instanceName = value.substring(backslashIdx + 1);
+          } else if (value.includes(',')) {
+            // Static port: "192.168.7.4,1433"
+            const [host, port] = value.split(',');
+            config.server = host.trim();
+            config.port = parseInt(port.trim(), 10);
+          } else {
+            config.server = value;
+          }
+        }
         if (key === 'initial catalog' || key === 'database') config.database = value;
         if (key === 'user id' || key === 'user') config.user = value;
         if (key === 'password' || key === 'pwd') config.password = value;
         if (key === 'encrypt') config.options.encrypt = value.toLowerCase() === 'true';
+        if (key === 'trustservercertificate') config.options.trustServerCertificate = value.toLowerCase() === 'true';
         if (key === 'port') config.port = parseInt(value, 10);
+        if (key === 'connect timeout') config.options.connectTimeout = parseInt(value, 10) * 1000;
       });
       if (config.server) connection = config;
     }
