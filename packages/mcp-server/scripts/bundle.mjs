@@ -15,6 +15,9 @@ await build({
     js: `var __filename_url__ = require('url').pathToFileURL(__filename).href;`,
   },
   external: [
+    'pino',
+    'pino-file',
+    'thread-stream',
     'sqlite3',
     'better-sqlite3',
     'tedious',
