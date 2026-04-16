@@ -30,7 +30,7 @@ export interface IdeInfo {
 }
 
 export type ViewMode = 'graph' | 'settings' | 'detail';
-export type DetailTab = 'info' | 'code' | 'data';
+export type DetailTab = 'info' | 'code' | 'data' | 'references';
 export type Theme = 'dark' | 'light';
 
 export interface UserSession {

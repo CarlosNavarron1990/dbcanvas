@@ -161,6 +161,47 @@ export function startServer(port: number = 3000) {
     }
   });
 
+  app.get('/api/project/connection', async (req: Request, res: Response) => {
+    try {
+      const projectPath = req.query.projectPath as string;
+      const config = discoverConnectionString(projectPath);
+      const root = config?.solutionRoot || projectPath || process.cwd();
+      const fs = await import('fs');
+      const connPath = path.join(root, '.dbcanvas', 'connection.json');
+      if (fs.existsSync(connPath)) {
+        res.json(JSON.parse(fs.readFileSync(connPath, 'utf8')));
+      } else {
+        res.json(null);
+      }
+    } catch (e: any) {
+      sendError(res, 500, e.message);
+    }
+  });
+
+  app.post('/api/project/connection', async (req: Request, res: Response) => {
+    try {
+      const { projectPath, connectionData } = req.body;
+      const config = discoverConnectionString(projectPath);
+      const root = config?.solutionRoot || projectPath || process.cwd();
+      
+      const fs = await import('fs');
+      const dbcanvasDir = path.join(root, '.dbcanvas');
+      if (!fs.existsSync(dbcanvasDir)) {
+        fs.mkdirSync(dbcanvasDir, { recursive: true });
+      }
+
+      fs.writeFileSync(path.join(dbcanvasDir, 'connection.json'), JSON.stringify(connectionData, null, 2));
+
+      // Test connection
+      const { testConnection } = await import('@dbcanvas/core');
+      const testResult = await testConnection(JSON.stringify(connectionData));
+      
+      sendJson(res, { success: true, testResult });
+    } catch (e: any) {
+      sendError(res, 500, e.message);
+    }
+  });
+
   // SSE Notification Bridge
   const clients: { id: number; res: Response }[] = [];
 

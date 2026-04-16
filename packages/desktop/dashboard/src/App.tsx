@@ -11,6 +11,7 @@ import CommandPalette from './components/CommandPalette';
 import NotificationToast from './components/NotificationToast';
 import Onboarding from './components/Onboarding';
 import LoginScreen from './components/LoginScreen';
+import ConnectionWizard from './components/ConnectionWizard';
 import './index.css';
 
 const POLL_INTERVAL = 10_000; // 10 seconds
@@ -24,6 +25,7 @@ const App: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dbcanvas-onboarded'));
   const [showLogin, setShowLogin] = useState(false);
   const [loginChecked, setLoginChecked] = useState(false);
+  const [showWizardForProject, setShowWizardForProject] = useState<string | null>(null);
   const lastNodeCount = useRef(0);
 
   // Check for existing session or show login
@@ -76,6 +78,11 @@ const App: React.FC = () => {
 
     // SSE notifications from MCP
     const cleanup = api.onNotification((signal) => {
+      if (signal.type === 'NEEDS_CONNECTION') {
+        setShowWizardForProject(signal.name || '');
+        return;
+      }
+
       setLastSignal(signal);
       setTimeout(() => {
         useStore.getState().lastSignal?.name === signal.name && setLastSignal(null);
@@ -159,6 +166,17 @@ const App: React.FC = () => {
               <GraphCanvas />}
         </div>
       </main>
+      
+      {showWizardForProject && (
+        <ConnectionWizard 
+          projectPath={showWizardForProject} 
+          onClose={() => setShowWizardForProject(null)} 
+          onSuccess={() => {
+            setShowWizardForProject(null);
+            fetchStatus();
+          }} 
+        />
+      )}
     </div>
   );
 };

@@ -16,34 +16,23 @@ afterAll(async () => {
 });
 
 describe('getLocalDb', () => {
-  it('creates .dbcanvas directory and discovery.db', async () => {
-    const db = await getLocalDb(TEST_DIR);
-    expect(db).toBeTruthy();
-
-    const dbPath = path.join(TEST_DIR, '.dbcanvas', 'discovery.db');
-    expect(fs.existsSync(dbPath)).toBe(true);
+  it('creates .dbcanvas directory and returns a LocalStore', () => {
+    const store = getLocalDb(TEST_DIR);
+    expect(store).toBeTruthy();
+    const dbDir = path.join(TEST_DIR, '.dbcanvas');
+    expect(fs.existsSync(dbDir)).toBe(true);
   });
 
-  it('creates nodes and edges tables', async () => {
-    const db = await getLocalDb(TEST_DIR);
-    const hasNodes = await db.schema.hasTable('nodes');
-    const hasEdges = await db.schema.hasTable('edges');
-    expect(hasNodes).toBe(true);
-    expect(hasEdges).toBe(true);
-  });
-
-  it('reuses connection for same resolved path', async () => {
-    const db1 = await getLocalDb(TEST_DIR);
-    const db2 = await getLocalDb(TEST_DIR);
-    // Both should be functional Knex instances pointing to same DB
-    const count1 = await db1('nodes').count('id as count').first();
-    const count2 = await db2('nodes').count('id as count').first();
-    expect(count1).toEqual(count2);
+  it('reuses store instance for same resolved path', () => {
+    const store1 = getLocalDb(TEST_DIR);
+    const store2 = getLocalDb(TEST_DIR);
+    // Both should be the same instance
+    expect(store1.nodeCount()).toEqual(store2.nodeCount());
   });
 });
 
 describe('getDiscoveryGraph', () => {
-  it('returns empty graph for fresh db', async () => {
+  it('returns empty graph for fresh store', async () => {
     const freshDir = path.join(os.tmpdir(), 'dbcanvas-empty-' + Date.now());
     fs.mkdirSync(freshDir, { recursive: true });
 
@@ -56,12 +45,12 @@ describe('getDiscoveryGraph', () => {
     fs.rmSync(freshDir, { recursive: true, force: true });
   });
 
-  it('returns inserted nodes', async () => {
-    const db = await getLocalDb(TEST_DIR);
+  it('returns inserted nodes via LocalStore', async () => {
+    const store = getLocalDb(TEST_DIR);
 
-    await db('nodes').insert({ id: 'table:Users', name: 'Users', type: 'TABLE' }).onConflict('id').merge();
-    await db('nodes').insert({ id: 'sp:GetUsers', name: 'GetUsers', type: 'PROCEDURE' }).onConflict('id').merge();
-    await db('edges').insert({ source: 'sp:GetUsers', target: 'table:Users', type: 'USAGE' }).onConflict(['source', 'target', 'type']).ignore();
+    store.upsertNode({ id: 'table:Users', name: 'Users', type: 'TABLE' });
+    store.upsertNode({ id: 'sp:GetUsers', name: 'GetUsers', type: 'PROCEDURE' });
+    store.upsertEdge({ source: 'sp:GetUsers', target: 'table:Users', type: 'USAGE' });
 
     const graph = await getDiscoveryGraph(TEST_DIR);
     expect(graph.nodes.length).toBeGreaterThanOrEqual(2);
@@ -90,6 +79,5 @@ describe('auto-gitignore', () => {
       const content = fs.readFileSync(gitignorePath, 'utf-8');
       expect(content).toContain('.dbcanvas/');
     }
-    // If .gitignore doesn't exist, that's also fine - the test project may not need one
   });
 });

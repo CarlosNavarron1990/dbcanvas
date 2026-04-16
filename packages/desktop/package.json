@@ -12,9 +12,10 @@
     "dashboard": "node build/server.js",
     "clean": "rm -rf build",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder",
-    "dist:mac": "npm run build:full && electron-builder --mac",
-    "dist:win": "npm run build:full && electron-builder --win",
+    "dist": "npm run prep-mcp && electron-builder",
+    "dist:mac": "npm run build:full && npm run prep-mcp && electron-builder --mac",
+    "dist:win": "npm run build:full && npm run prep-mcp && electron-builder --win",
+    "prep-mcp": "node scripts/prepare-mcp.js",
     "rebuild-native": "electron-builder install-app-deps",
     "deploy:local": "mkdir -p ../platform/public/downloads && cp release/DBCanvas-Setup.exe ../platform/public/downloads/ 2>/dev/null || true && cp release/*.dmg ../platform/public/downloads/ 2>/dev/null || true && cp release/*.AppImage ../platform/public/downloads/ 2>/dev/null || true"
   },
@@ -59,26 +60,9 @@
     },
     "extraResources": [
       {
-        "from": "../../packages/mcp-server/build/bundle.cjs",
-        "to": "mcp-server/index.cjs"
-      },
-      {
-        "from": "../../node_modules/sqlite3",
-        "to": "mcp-server/node_modules/sqlite3",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../../node_modules/tedious",
-        "to": "mcp-server/node_modules/tedious",
-        "filter": [
-          "**/*"
-        ]
-      },
-      {
-        "from": "../../node_modules/thread-stream/lib/worker.js",
-        "to": "mcp-server/lib/worker.js"
+        "from": "mcp-release",
+        "to": "mcp-server",
+        "filter": ["**/*"]
       }
     ],
     "mac": {

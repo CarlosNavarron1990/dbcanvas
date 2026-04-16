@@ -246,7 +246,20 @@ const SettingsView: React.FC = () => {
                     </code>
                   </div>
                   
-                  <div className="ide-status" style={{ marginLeft: 16 }}>
+                  <div className="ide-status" style={{ marginLeft: 16, display: 'flex', gap: 6 }}>
+                    <button 
+                      className="btn-sm btn-secondary" 
+                      onClick={() => {
+                        fetch('/api/notify', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ type: 'NEEDS_CONNECTION', name: project.path })
+                        }).catch(() => {});
+                      }}
+                      title="Configure Connection"
+                    >
+                      <Database size={12} />
+                    </button>
                     <button 
                       className="btn-sm btn-danger" 
                       onClick={() => {

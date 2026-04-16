@@ -1,9 +1,9 @@
-import knex, { Knex } from 'knex';
 import path from 'path';
 import fs from 'fs';
 import { DbClient, getTableForeignKeys, getProcedureDependencies, getTableColumns } from './database.js';
 import { discoverConnectionString } from './config.js';
 import { createChildLogger } from './logger.js';
+import { getStore, closeAllStores, LocalStore } from './local-store.js';
 
 const log = createChildLogger('discovery');
 
@@ -21,155 +21,107 @@ export interface DiscoveryEdge {
   label?: string;
 }
 
-let localDbInstances: Record<string, Knex> = {};
-
-/** Close all cached local DB connections */
+/** Close all cached local DB connections (no-op for JSON store, kept for API compat) */
 export async function closeAllLocalDbs(): Promise<void> {
-  for (const [key, db] of Object.entries(localDbInstances)) {
-    try { await db.destroy(); } catch { }
-    delete localDbInstances[key];
-  }
+  closeAllStores();
 }
 
-export async function getLocalDb(projectPathOverride?: string): Promise<Knex> {
+function resolveDbcanvasDir(projectPathOverride?: string): string {
   const config = discoverConnectionString(projectPathOverride);
-  let dbDir: string;
 
-  if (config && config.solutionRoot && config.solutionRoot !== '/') {
-    dbDir = path.join(config.solutionRoot, '.dbcanvas');
+  let root: string;
+  if (config?.solutionRoot && config.solutionRoot !== '/') {
+    root = config.solutionRoot;
   } else if (projectPathOverride) {
-    dbDir = path.join(projectPathOverride, '.dbcanvas');
+    root = projectPathOverride;
   } else {
-    // Fallback to project root via common markers if cwd is root
     const cwd = process.cwd();
-    dbDir = path.join(cwd === '/' ? (process.env.HOME || '/tmp') : cwd, '.dbcanvas');
+    // Windows: avoid C:\ as root
+    const isRoot = cwd === '/' || /^[A-Za-z]:[\\\/]?$/.test(cwd);
+    root = isRoot ? (process.env.HOME || process.env.USERPROFILE || cwd) : cwd;
   }
+
+  const dbDir = path.join(root, '.dbcanvas');
 
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
 
     // Auto-inject to .gitignore for security
-    const gitignorePath = path.join(path.dirname(dbDir), '.gitignore');
-    if (fs.existsSync(gitignorePath)) {
-      const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
-      if (!gitignore.includes('.dbcanvas/')) {
-        fs.appendFileSync(gitignorePath, '\n# Omni/Nexus DB Storage\n.dbcanvas/\n');
+    const gitignorePath = path.join(root, '.gitignore');
+    try {
+      if (fs.existsSync(gitignorePath)) {
+        const gitignore = fs.readFileSync(gitignorePath, 'utf-8');
+        if (!gitignore.includes('.dbcanvas/')) {
+          fs.appendFileSync(gitignorePath, '\n# DBCanvas local storage\n.dbcanvas/\n');
+        }
+      } else {
+        fs.writeFileSync(gitignorePath, '# DBCanvas local storage\n.dbcanvas/\n');
       }
-    } else {
-      fs.writeFileSync(gitignorePath, '# Omni/Nexus DB Storage\n.dbcanvas/\n');
-    }
+    } catch { /* gitignore update is best-effort */ }
   }
 
-  const dbPath = path.join(dbDir, 'discovery.db');
-
-  if (localDbInstances[dbPath]) return localDbInstances[dbPath];
-
-  log.info({ dbPath }, 'Using discovery database');
-
-  const localDb = knex({
-    client: 'sqlite3',
-    connection: {
-      filename: dbPath,
-    },
-    useNullAsDefault: true,
-  });
-
-  // Initialize schema
-  if (!(await localDb.schema.hasTable('nodes'))) {
-    await localDb.schema.createTable('nodes', (table) => {
-      table.string('id').primary();
-      table.string('name');
-      table.string('type');
-      table.text('details');
-      table.timestamp('updated_at').defaultTo(localDb!.fn.now());
-    });
-  }
-
-  if (!(await localDb.schema.hasTable('edges'))) {
-    await localDb.schema.createTable('edges', (table) => {
-      table.string('source');
-      table.string('target');
-      table.string('type');
-      table.string('label');
-      table.unique(['source', 'target', 'type']);
-    });
-  }
-
-  return localDb;
+  return dbDir;
 }
 
-export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: string): Promise<{ nodes: number; edges: number }> {
-  const db = await getLocalDb(projectPathOverride);
+export function getLocalDb(projectPathOverride?: string): LocalStore {
+  const dbDir = resolveDbcanvasDir(projectPathOverride);
+  log.info({ dbDir }, 'Using discovery store');
+  return getStore(dbDir);
+}
 
-  // 1. Get Tables
+// ─── Sync ────────────────────────────────────────────────────────────────────
+
+export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: string): Promise<{ nodes: number; edges: number }> {
+  const store = getLocalDb(projectPathOverride);
+
+  // 1. Tables
   const tables = await remoteDb.raw(
     remoteDb.client.config.client === 'mssql'
-      ? "SELECT name FROM sys.tables"
+      ? 'SELECT name FROM sys.tables'
       : "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'"
   );
-
   const tableRows = remoteDb.client.config.client === 'pg' ? tables.rows : tables;
-
   for (const row of tableRows) {
-    await db('nodes').insert({
-      id: `table:${row.name}`,
-      name: row.name,
-      type: 'TABLE',
-    }).onConflict('id').merge();
+    store.upsertNode({ id: `table:${row.name}`, name: row.name, type: 'TABLE' });
   }
 
-  // 1b. Get Views
+  // 2. Views
   const views = await remoteDb.raw(
     remoteDb.client.config.client === 'mssql'
-      ? "SELECT name FROM sys.views"
+      ? 'SELECT name FROM sys.views'
       : "SELECT table_name as name FROM information_schema.views WHERE table_schema = 'public'"
   );
   const viewRows = remoteDb.client.config.client === 'pg' ? views.rows : views;
   for (const row of viewRows) {
-    await db('nodes').insert({
-      id: `view:${row.name}`,
-      name: row.name,
-      type: 'VIEW',
-    }).onConflict('id').merge();
+    store.upsertNode({ id: `view:${row.name}`, name: row.name, type: 'VIEW' });
   }
 
-  // 2. Get Foreign Keys
+  // 3. Foreign Keys
   const fks = await getTableForeignKeys(remoteDb);
   for (const fk of fks) {
-    await db('edges').insert({
+    store.upsertEdge({
       source: `table:${fk.parent_table}`,
       target: `table:${fk.referenced_table}`,
       type: 'FK',
       label: fk.constraint_name,
-    }).onConflict(['source', 'target', 'type']).ignore();
+    });
   }
 
-  // 3. Get SP Dependencies (MSSQL focus)
+  // 4. SP Dependencies
   const deps = await getProcedureDependencies(remoteDb);
   for (const dep of deps) {
-    // Add SP Node
-    await db('nodes').insert({
-      id: `sp:${dep.referencing_name}`,
-      name: dep.referencing_name,
-      type: 'PROCEDURE',
-    }).onConflict('id').merge();
-
-    // Add Usage Edge
-    await db('edges').insert({
+    store.upsertNode({ id: `sp:${dep.referencing_name}`, name: dep.referencing_name, type: 'PROCEDURE' });
+    store.upsertEdge({
       source: `sp:${dep.referencing_name}`,
       target: `table:${dep.referenced_name}`,
       type: 'USAGE',
-    }).onConflict(['source', 'target', 'type']).ignore();
+    });
   }
 
-  const nodeCount = await db('nodes').count('id as count').first();
-  const edgeCount = await db('edges').count('* as count').first();
-
-  return {
-    nodes: Number(nodeCount?.count || 0),
-    edges: Number(edgeCount?.count || 0)
-  };
+  return { nodes: store.nodeCount(), edges: store.edgeCount() };
 }
+
+// ─── Graph ────────────────────────────────────────────────────────────────────
 
 export interface GraphQueryOptions {
   type?: 'TABLE' | 'PROCEDURE' | 'VIEW';
@@ -178,209 +130,100 @@ export interface GraphQueryOptions {
 }
 
 export async function getDiscoveryGraph(projectPathOverride?: string, options?: GraphQueryOptions) {
-  let db: any = null;
-  const nodes: any[] = [];
-  const edges: any[] = [];
-  let totalCount = 0;
+  const store = getLocalDb(projectPathOverride);
 
-  // 1. Try to get Database connection
-  try {
-    db = await getLocalDb(projectPathOverride);
-  } catch (e) {
-    log.warn({ error: e }, 'Failed to initialize local discovery database, falling back to file-only discovery');
-  }
-
-  // 2. Scan file-system procedures (Always do this for robustness)
+  // Always scan .dbcanvas/procedures/*.md for locally anchored SPs
   const config = discoverConnectionString(projectPathOverride);
   const root = config?.solutionRoot || projectPathOverride || process.cwd();
   const procDir = path.join(root, '.dbcanvas', 'procedures');
-  
+
   if (fs.existsSync(procDir)) {
     try {
-      const files = fs.readdirSync(procDir);
-      for (const file of files) {
-        if (file.endsWith('.md')) {
-          const fileName = path.basename(file, '.md');
-          
-          // Try to find a "dot-normalized" version to check for duplicates
-          // e.g. Integracion_Get_Something -> Integracion.Get_Something
-          const normalizedName = fileName.replace('_', '.');
-          const idLiteral = `sp:${fileName}`;
-          const idNormalized = `sp:${normalizedName}`;
-          
-          if (db) {
-            // Check if either version already exists
-            const existing = await db('nodes')
-              .where('id', idLiteral)
-              .orWhere('id', idNormalized)
-              .first();
-            
-            if (!existing) {
-              await db('nodes').insert({
-                id: idNormalized, // Prefer normalized (dotted) ID for consistency
-                name: normalizedName,
-                type: 'PROCEDURE',
-              }).onConflict('id').ignore();
-            }
-          } else {
-            // Deduplicate in memory if no DB
-            if (!nodes.find(n => n.id === idLiteral || n.id === idNormalized)) {
-              nodes.push({ id: idNormalized, name: normalizedName, type: 'PROCEDURE' });
-            }
-          }
-        }
+      for (const file of fs.readdirSync(procDir)) {
+        if (!file.endsWith('.md')) continue;
+        const fileName = path.basename(file, '.md');
+        const normalizedName = fileName.replace('_', '.');
+        const idNormalized = `sp:${normalizedName}`;
+        store.upsertNode({ id: idNormalized, name: normalizedName, type: 'PROCEDURE' });
       }
     } catch (e) {
       log.error({ error: e }, 'Failed to scan procedures directory');
     }
   }
 
-  // 3. Query Database if available
-  if (db) {
-    try {
-      let nodesQuery = db('nodes').select('*');
-      if (options?.type) {
-        nodesQuery = nodesQuery.where('type', options.type);
-      }
-      if (options?.offset) {
-        nodesQuery = nodesQuery.offset(options.offset);
-      }
-      if (options?.limit) {
-        nodesQuery = nodesQuery.limit(options.limit);
-      }
+  let dbNodes = store.getNodes(options?.type);
+  const totalCount = store.nodeCount();
 
-      const dbNodes = await nodesQuery;
-      nodes.push(...dbNodes.map((n: any) => ({ id: n.id, name: n.name, type: n.type })));
+  // Pagination
+  const offset = options?.offset ?? 0;
+  const limit = options?.limit ?? dbNodes.length;
+  dbNodes = dbNodes.slice(offset, offset + limit);
 
-      // Get edges only for the nodes in the result set
-      let dbEdges;
-      if (options?.type || options?.limit) {
-        const nodeIds = nodes.map((n: any) => n.id);
-        dbEdges = await db('edges').select('*')
-          .whereIn('source', nodeIds)
-          .orWhereIn('target', nodeIds);
-      } else {
-        dbEdges = await db('edges').select('*');
-      }
-      edges.push(...dbEdges.map((e: any) => ({ source: e.source, target: e.target, type: e.type, label: e.label })));
-
-      const totalNodes = await db('nodes').count('id as count').first();
-      totalCount = Number(totalNodes?.count || 0);
-    } catch (e) {
-      log.error({ error: e }, 'Error querying discovery database during graph generation');
-    }
-  } else {
-    // If no DB, totalCount is just the nodes we found in files
-    totalCount = nodes.length;
-  }
-
-  // Deduplicate nodes by ID (in case some were in both DB and FS)
-  const uniqueNodesMap = new Map();
-  nodes.forEach(n => uniqueNodesMap.set(n.id, n));
+  const nodeIds = dbNodes.map(n => n.id);
+  const edges = store.getEdges(options?.type || options?.limit ? nodeIds : undefined);
 
   return {
-    nodes: Array.from(uniqueNodesMap.values()),
+    nodes: dbNodes.map(n => ({ id: n.id, name: n.name, type: n.type })),
     links: edges,
     total: totalCount,
   };
 }
 
-/**
- * Lazy Discovery: Discovers a single object and its immediate dependencies
- */
-export async function discoverObject(remoteDb: DbClient, name: string, type: 'TABLE' | 'PROCEDURE' | 'VIEW', projectPathOverride?: string): Promise<void> {
-  const db = await getLocalDb(projectPathOverride);
+// ─── Lazy Discovery ───────────────────────────────────────────────────────────
+
+export async function discoverObject(
+  remoteDb: DbClient,
+  name: string,
+  type: 'TABLE' | 'PROCEDURE' | 'VIEW',
+  projectPathOverride?: string
+): Promise<void> {
+  const store = getLocalDb(projectPathOverride);
 
   if (type === 'PROCEDURE') {
-    // 1. Add SP Node
-    await db('nodes').insert({
-      id: `sp:${name}`,
-      name: name,
-      type: 'PROCEDURE',
-    }).onConflict('id').merge();
+    store.upsertNode({ id: `sp:${name}`, name, type: 'PROCEDURE' });
 
-    // 2. Discover Dependencies
     const spDeps = await getProcedureDependencies(remoteDb, name);
-
     for (const dep of spDeps) {
-      // Add Referenced Table Node
-      await db('nodes').insert({
-        id: `table:${dep.referenced_name}`,
-        name: dep.referenced_name,
-        type: 'TABLE',
-      }).onConflict('id').merge();
-
-      // Add Edge
-      await db('edges').insert({
-        source: `sp:${name}`,
-        target: `table:${dep.referenced_name}`,
-        type: 'USAGE',
-      }).onConflict(['source', 'target', 'type']).ignore();
-
-      // Ensure shadow structure for the table
+      store.upsertNode({ id: `table:${dep.referenced_name}`, name: dep.referenced_name, type: 'TABLE' });
+      store.upsertEdge({ source: `sp:${name}`, target: `table:${dep.referenced_name}`, type: 'USAGE' });
       await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => { });
     }
   } else if (type === 'TABLE') {
-    // 1. Add Table Node
-    await db('nodes').insert({
-      id: `table:${name}`,
-      name: name,
-      type: 'TABLE',
-    }).onConflict('id').merge();
-
-    // 2. Ensure shadow structure
+    store.upsertNode({ id: `table:${name}`, name, type: 'TABLE' });
     await ensureShadowTable(remoteDb, name, projectPathOverride).catch(() => { });
   }
 }
 
-/**
- * Shadow Table Logic: Clones a remote table structure to local SQLite
- */
-export async function ensureShadowTable(remoteDb: DbClient, tableName: string, projectPathOverride?: string): Promise<void> {
-  const local = await getLocalDb(projectPathOverride);
+// ─── Shadow tables ────────────────────────────────────────────────────────────
 
-  // 1. Get remote columns
-  const columns = await getTableColumns(remoteDb, tableName);
-
-  // 2. Map types and create table if not exists
-  if (!(await local.schema.hasTable(`shadow_${tableName}`))) {
-    await local.schema.createTable(`shadow_${tableName}`, (table) => {
-      for (const col of columns) {
-        // Simple type mapping (MSSQL/PG -> SQLite)
-        const type = col.type.toLowerCase();
-        if (type.includes('int')) {
-          table.integer(col.name);
-        } else if (type.includes('char') || type.includes('text')) {
-          table.text(col.name);
-        } else if (type.includes('date') || type.includes('time')) {
-          table.string(col.name); // SQLite doesn't have native datetime, string is safest
-        } else if (type.includes('float') || type.includes('decimal') || type.includes('numeric')) {
-          table.float(col.name);
-        } else {
-          table.text(col.name);
-        }
-      }
-      table.timestamp('shadow_updated_at').defaultTo(local.fn.now());
-    });
-    log.info({ tableName }, 'Created shadow table');
+export async function ensureShadowTable(
+  remoteDb: DbClient,
+  tableName: string,
+  projectPathOverride?: string
+): Promise<void> {
+  const store = getLocalDb(projectPathOverride);
+  if (!store.hasShadowTable(tableName)) {
+    // Initialize with empty rows (schema is inferred from data on first capture)
+    store.setShadowRows(tableName, []);
   }
 }
 
-/**
- * Data Capture logic: Pulls rows from remote to local shadow table
- */
-export async function captureShadowData(remoteDb: DbClient, tableName: string, params: any = {}, limit?: number, projectPathOverride?: string): Promise<number> {
-  const local = await getLocalDb(projectPathOverride);
-  await ensureShadowTable(remoteDb, tableName, projectPathOverride);
+export async function captureShadowData(
+  remoteDb: DbClient,
+  tableName: string,
+  params: any = {},
+  limit?: number,
+  projectPathOverride?: string
+): Promise<number> {
+  const store = getLocalDb(projectPathOverride);
 
-  // 1. Check Row Count
+  // Count rows
   let countQuery = remoteDb(tableName).count('* as count');
   if (params && Object.keys(params).length > 0) {
     for (const [key, value] of Object.entries(params)) {
       if (value) countQuery = countQuery.where(key, value);
     }
   }
-
   const countResult = await countQuery;
   const totalRows = Number(countResult[0]?.count || countResult[0]?.[''] || 0);
 
@@ -390,32 +233,25 @@ export async function captureShadowData(remoteDb: DbClient, tableName: string, p
 
   const finalLimit = limit || totalRows;
 
-  // 2. Fetch Data
   let query = remoteDb(tableName).select('*').limit(finalLimit);
-
   if (params && Object.keys(params).length > 0) {
     for (const [key, value] of Object.entries(params)) {
-      if (value) {
-        query = query.where(key, value);
-      }
+      if (value) query = query.where(key, value);
     }
   }
 
   const data = await query;
+  const rows = data.map((r: any) => {
+    const obj: Record<string, unknown> = {};
+    for (const k of Object.keys(r)) obj[k] = r[k];
+    return obj;
+  });
 
-  // Clear and Repopulate
-  await local(`shadow_${tableName}`).del();
-  if (data.length > 0) {
-    await local(`shadow_${tableName}`).insert(data);
-  }
-
-  return data.length;
+  store.setShadowRows(tableName, rows);
+  return rows.length;
 }
 
-export async function getShadowData(tableName: string, projectPathOverride?: string) {
-  const local = await getLocalDb(projectPathOverride);
-  if (!(await local.schema.hasTable(`shadow_${tableName}`))) {
-    return [];
-  }
-  return local(`shadow_${tableName}`).select('*');
+export async function getShadowData(tableName: string, projectPathOverride?: string): Promise<Record<string, unknown>[]> {
+  const store = getLocalDb(projectPathOverride);
+  return store.getShadowRows(tableName);
 }

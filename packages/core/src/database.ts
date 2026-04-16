@@ -7,10 +7,37 @@ const DEFAULT_POOL_MIN = 0;
 const DEFAULT_POOL_MAX = 5;
 
 export async function createDbClient(connectionString: string, queryTimeout?: number): Promise<DbClient> {
-  let clientType = 'sqlite3';
+  let clientType = 'mssql'; // Default to mssql since it's the primary target
   let connection: any = connectionString;
 
-  if (connectionString.startsWith('postgres') || connectionString.startsWith('postgresql')) {
+  if (connectionString.trim().startsWith('{')) {
+    try {
+      const configObj = JSON.parse(connectionString);
+      clientType = configObj.client || 'mssql';
+      
+      if (clientType === 'mssql') {
+        connection = {
+           server: configObj.server,
+           port: configObj.port ? parseInt(configObj.port.toString(), 10) : undefined,
+           user: configObj.user,
+           password: configObj.password,
+           database: configObj.database,
+           options: {
+              encrypt: configObj.options?.encrypt ?? false,
+              trustServerCertificate: configObj.options?.trustServerCertificate ?? true,
+              connectTimeout: configObj.options?.connectTimeout ?? 30000,
+              requestTimeout: configObj.options?.requestTimeout ?? 60000,
+              cancelTimeout: 5000,
+              instanceName: configObj.instanceName
+           }
+        };
+      } else {
+        connection = configObj.connection || configObj;
+      }
+    } catch(e) {
+      console.error('[database] Failed to parse connection object JSON', e);
+    }
+  } else if (connectionString.startsWith('postgres') || connectionString.startsWith('postgresql')) {
     clientType = 'pg';
   } else if (/data source=|server=|database\.windows\.net/i.test(connectionString)) {
     clientType = 'mssql';

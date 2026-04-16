@@ -127,7 +127,12 @@ function maskPassword(url: string): string {
 async function getClient(url?: string, projectPath?: string): Promise<DbClient> {
   const context = getActiveContext(projectPath);
   const targetUrl = url || context.activeUrl;
-  if (!targetUrl) throw new Error("No database URL provided or discovered. Ensure you have a .env or web.config in the project path: " + (projectPath || process.cwd()));
+  if (!targetUrl) {
+    const rootDir = context.projectRoot || projectPath || process.cwd();
+    // Signal the dashboard to open the connection wizard
+    notifyDashboard('NEEDS_CONNECTION', rootDir);
+    throw new Error("No connection configured! Please open the DBCanvas desktop app to use the Connection Wizard, or ensure you have a .env or web.config in the project path: " + rootDir);
+  }
 
   const existing = dbClients.get(targetUrl);
   if (existing) {

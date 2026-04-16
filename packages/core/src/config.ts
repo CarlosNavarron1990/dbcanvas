@@ -63,6 +63,20 @@ export function discoverConnectionString(overridePath?: string): DbConfig | null
 
     const solutionRoot = findSolutionRoot(start);
 
+    // 0. Check for .dbcanvas/connection.json
+    if (solutionRoot && solutionRoot !== '/') {
+      const dbcanvasPath = path.join(solutionRoot, '.dbcanvas', 'connection.json');
+      if (fs.existsSync(dbcanvasPath)) {
+        try {
+          const stats = fs.statSync(dbcanvasPath);
+          const configJson = fs.readFileSync(dbcanvasPath, 'utf8');
+          // Validate json format
+          JSON.parse(configJson); 
+          return { connectionString: configJson, source: `connection.json (${dbcanvasPath})`, configDir: path.dirname(dbcanvasPath), solutionRoot, filePath: dbcanvasPath, lastModified: stats.mtime };
+        } catch(e) {}
+      }
+    }
+
     // 1. Check for .env variations
     for (const fileName of COMMON_ENV_FILES) {
       const envPath = findFileUpwards(start, fileName);

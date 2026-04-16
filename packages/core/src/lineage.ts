@@ -165,55 +165,10 @@ async function storeLineage(
   projectPath: string,
 ): Promise<void> {
   try {
-    const local = await getLocalDb(projectPath);
-
-    // Ensure lineage tables exist
-    if (!(await local.schema.hasTable('lineage_nodes'))) {
-      await local.schema.createTable('lineage_nodes', (table) => {
-        table.string('id').primary();
-        table.string('name');
-        table.string('type');
-        table.string('field');
-        table.string('table_name');
-        table.timestamp('traced_at').defaultTo(local.fn.now());
-      });
-    }
-
-    if (!(await local.schema.hasTable('lineage_edges'))) {
-      await local.schema.createTable('lineage_edges', (table) => {
-        table.string('source');
-        table.string('target');
-        table.string('type');
-        table.string('via');
-        table.string('field');
-        table.unique(['source', 'target', 'field']);
-      });
-    }
-
-    // Clear previous lineage for this field
-    await local('lineage_nodes').where('field', fieldName).del();
-    await local('lineage_edges').where('field', fieldName).del();
-
-    // Insert new lineage
-    for (const node of nodes) {
-      await local('lineage_nodes').insert({
-        id: node.id,
-        name: node.name,
-        type: node.type,
-        field: fieldName,
-        table_name: node.table || null,
-      });
-    }
-
-    for (const edge of edges) {
-      await local('lineage_edges').insert({
-        source: edge.source,
-        target: edge.target,
-        type: edge.type,
-        via: edge.via || null,
-        field: fieldName,
-      }).onConflict(['source', 'target', 'field']).ignore();
-    }
+    const store = getLocalDb(projectPath);
+    // Store lineage as JSON files keyed by field name
+    store.setShadowRows(`lineage_nodes_${fieldName}`, nodes as any);
+    store.setShadowRows(`lineage_edges_${fieldName}`, edges as any);
   } catch (err) {
     log.warn({ fieldName, error: err }, 'Failed to store lineage');
   }
@@ -221,19 +176,14 @@ async function storeLineage(
 
 export async function getStoredLineage(fieldName: string, projectPath: string): Promise<LineageGraph | null> {
   try {
-    const local = await getLocalDb(projectPath);
-    if (!(await local.schema.hasTable('lineage_nodes'))) return null;
+    const store = getLocalDb(projectPath);
+    if (!store.hasShadowTable(`lineage_nodes_${fieldName}`)) return null;
 
-    const nodes = await local('lineage_nodes').where('field', fieldName);
-    const edges = await local('lineage_edges').where('field', fieldName);
+    const nodes = store.getShadowRows(`lineage_nodes_${fieldName}`) as unknown as LineageNode[];
+    const edges = store.getShadowRows(`lineage_edges_${fieldName}`) as unknown as LineageEdge[];
 
     if (nodes.length === 0) return null;
-
-    return {
-      field: fieldName,
-      nodes: nodes.map((n: any) => ({ id: n.id, name: n.name, type: n.type, table: n.table_name })),
-      edges: edges.map((e: any) => ({ source: e.source, target: e.target, type: e.type, via: e.via })),
-    };
+    return { field: fieldName, nodes, edges };
   } catch {
     return null;
   }

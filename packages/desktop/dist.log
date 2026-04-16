@@ -1,0 +1,68 @@
+
+> @dbcanvas/desktop@1.1.2 dist:win
+> npm run build:full && npm run prep-mcp && electron-builder --win
+
+
+> @dbcanvas/desktop@1.1.2 build:full
+> tsc && npx esbuild src/preload.ts --bundle --platform=node --format=cjs --outfile=build/preload.js --external:electron && cd dashboard && npm run build
+
+
+  build/preload.js  3.8kb
+
+⚡ Done in 7ms
+
+> dashboard@0.0.0 build
+> tsc -b && vite build
+
+vite v8.0.3 building client environment for production...
+[2Ktransforming...✓ 3526 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                     0.46 kB │ gzip:   0.29 kB
+dist/assets/index-CAD-vNDX.css     24.47 kB │ gzip:   4.96 kB
+dist/assets/index-D1ht4ZFe.js   1,168.61 kB │ gzip: 395.65 kB
+
+✓ built in 287ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+> @dbcanvas/desktop@1.1.2 prep-mcp
+> node scripts/prepare-mcp.js
+
+Installing complete plugin dependencies for MCP Server...
+npm warn deprecated @npmcli/move-file@1.1.2: This functionality has been moved to @npmcli/fs
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated npmlog@6.0.2: This package is no longer supported.
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated are-we-there-yet@3.0.1: This package is no longer supported.
+npm warn deprecated glob@7.2.3: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+npm warn deprecated prebuild-install@7.1.3: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
+npm warn deprecated gauge@4.0.4: This package is no longer supported.
+npm warn deprecated tar@6.2.1: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+
+added 277 packages in 2s
+MCP Server release directory prepared successfully.
+  • electron-builder  version=26.8.1 os=25.4.0
+  • loaded configuration  file=package.json ("build" field)
+  • author is missed in the package.json  appPackageFile=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop/package.json
+  • packageManager not detected by file, falling back to environment detection  resolvedPackageManager=npm detected=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+  • detected workspace root for project using lock file  pm=npm config=undefined resolved=/Users/xmn/Desarrollos/PlugginSQLAgent projectDir=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+  • installing dependencies  pm=npm platform=win32 arch=x64 projectDir=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop appDir=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop workspaceRoot=/Users/xmn/Desarrollos/PlugginSQLAgent
+  • executing @electron/rebuild  electronVersion=41.1.1 arch=x64 buildFromSource=false workspaceRoot=/Users/xmn/Desarrollos/PlugginSQLAgent projectDir=./ appDir=./
+  • installing native dependencies  arch=x64
+  • preparing       moduleName=sqlite3 arch=x64
+  • finished        moduleName=sqlite3 arch=x64
+  • completed installing native dependencies
+  • packaging       platform=win32 arch=x64 electron=41.1.1 appOutDir=release/win-unpacked
+  • searching for node modules  pm=npm searchDir=/Users/xmn/Desarrollos/PlugginSQLAgent/packages/desktop
+  • duplicate dependency references  dependencies=["hasown@2.0.2","pg@8.20.0","once@1.4.0","once@1.4.0","glob@7.2.3","fs-minipass@2.1.0","glob@7.2.3","lru-cache@6.0.0","minipass-collect@1.0.2","minipass-flush@1.0.7","minipass-pipeline@1.2.4","minipass@3.3.6","rimraf@3.0.2","ssri@8.0.1","tar@6.2.1","debug@4.4.3","debug@4.4.3","agent-base@6.0.2","debug@4.4.3","minipass@3.3.6","iconv-lite@0.6.3","minipass@3.3.6","minizlib@2.1.2","agent-base@6.0.2","debug@4.4.3","minipass@3.3.6","string_decoder@1.3.0","strip-ansi@6.0.1","string-width@4.2.3","glob@7.2.3","tar@6.2.1","once@1.4.0","once@1.4.0","once@1.4.0","pump@3.0.4","readable-stream@3.6.2","end-of-stream@1.4.5","readable-stream@3.6.2","minipass@3.3.6","minipass@3.3.6","@azure/core-util@1.13.1","@azure/core-auth@1.10.1","@azure/core-rest-pipeline@1.23.0","@azure/core-tracing@1.3.1","@azure/core-util@1.13.1","@azure/logger@1.3.0","@azure/core-auth@1.10.1","@azure/core-tracing@1.3.1","@azure/core-util@1.13.1","@azure/logger@1.3.0","debug@4.4.3","debug@4.4.3","@typespec/ts-http-runtime@0.3.4","@typespec/ts-http-runtime@0.3.4","jws@4.0.1","@azure/core-auth@1.10.1","@azure/core-rest-pipeline@1.23.0","@azure/core-tracing@1.3.1","@typespec/ts-http-runtime@0.3.4","@azure/core-auth@1.10.1","@azure/core-client@1.10.1","@azure/core-rest-pipeline@1.23.0","@azure/core-util@1.13.1","@azure/logger@1.3.0","@azure/core-rest-pipeline@1.23.0","@azure/core-tracing@1.3.1","@azure/core-util@1.13.1","@azure/core-auth@1.10.1","@azure/core-client@1.10.1","@azure/core-rest-pipeline@1.23.0","@azure/core-tracing@1.3.1","@azure/core-util@1.13.1","@azure/logger@1.3.0","@azure/logger@1.3.0","buffer@6.0.3","define-data-property@1.1.4","has-property-descriptors@1.0.2","call-bound@1.0.4","is-array-buffer@3.0.5","array-buffer-byte-length@1.0.2","call-bind@1.0.8","define-properties@1.2.1","es-abstract@1.24.1","get-intrinsic@1.3.0","is-array-buffer@3.0.5","get-intrinsic@1.3.0","define-data-property@1.1.4","get-intrinsic@1.3.0","has-property-descriptors@1.0.2","call-bind-apply-helpers@1.0.2","get-intrinsic@1.3.0","call-bound@1.0.4","is-data-view@1.0.2","call-bound@1.0.4","is-data-view@1.0.2","call-bound@1.0.4","is-data-view@1.0.2","get-intrinsic@1.3.0","hasown@2.0.2","call-bound@1.0.4","has-tostringtag@1.0.2","call-bound@1.0.4","safe-regex-test@1.1.0","call-bind@1.0.8","call-bound@1.0.4","define-properties@1.2.1","hasown@2.0.2","call-bind-apply-helpers@1.0.2","es-object-atoms@1.1.1","get-proto@1.0.1","hasown@2.0.2","call-bind-apply-helpers@1.0.2","es-object-atoms@1.1.1","call-bound@1.0.4","get-intrinsic@1.3.0","globalthis@1.0.4","has-property-descriptors@1.0.2","dunder-proto@1.0.1","hasown@2.0.2","side-channel@1.1.0","call-bind@1.0.8","call-bound@1.0.4","get-intrinsic@1.3.0","call-bound@1.0.4","get-intrinsic@1.3.0","is-typed-array@1.1.15","call-bound@1.0.4","has-tostringtag@1.0.2","hasown@2.0.2","call-bound@1.0.4","call-bound@1.0.4","has-tostringtag@1.0.2","which-typed-array@1.1.20","call-bound@1.0.4","call-bind@1.0.8","call-bound@1.0.4","define-properties@1.2.1","es-object-atoms@1.1.1","get-intrinsic@1.3.0","safe-push-apply@1.0.0","call-bind@1.0.8","define-properties@1.2.1","get-proto@1.0.1","set-function-name@2.0.2","call-bind@1.0.8","call-bound@1.0.4","get-intrinsic@1.3.0","call-bound@1.0.4","is-regex@1.2.1","dunder-proto@1.0.1","es-object-atoms@1.1.1","internal-slot@1.1.0","call-bind@1.0.8","call-bound@1.0.4","define-data-property@1.1.4","define-properties@1.2.1","es-abstract@1.24.1","es-object-atoms@1.1.1","has-property-descriptors@1.0.2","call-bind@1.0.8","call-bound@1.0.4","define-properties@1.2.1","es-object-atoms@1.1.1","call-bind@1.0.8","define-properties@1.2.1","es-object-atoms@1.1.1","call-bound@1.0.4","is-typed-array@1.1.15","call-bind@1.0.8","has-proto@1.2.0","is-typed-array@1.1.15","available-typed-arrays@1.0.7","call-bind@1.0.8","for-each@0.3.5","has-proto@1.2.0","is-typed-array@1.1.15","call-bind@1.0.8","define-properties@1.2.1","es-abstract@1.24.1","es-object-atoms@1.1.1","get-intrinsic@1.3.0","get-proto@1.0.1","call-bound@1.0.4","function.prototype.name@1.1.8","has-tostringtag@1.0.2","call-bound@1.0.4","get-proto@1.0.1","has-tostringtag@1.0.2","safe-regex-test@1.1.0","is-date-object@1.1.0","call-bound@1.0.4","call-bound@1.0.4","get-proto@1.0.1","has-tostringtag@1.0.2","safe-regex-test@1.1.0","is-regex@1.2.1","is-weakref@1.1.1","which-boxed-primitive@1.1.1","call-bound@1.0.4","get-intrinsic@1.3.0","which-typed-array@1.1.20","call-bind@1.0.8","for-each@0.3.5","is-typed-array@1.1.15","reflect.getprototypeof@1.0.10","call-bound@1.0.4","call-bound@1.0.4","has-tostringtag@1.0.2","call-bound@1.0.4","has-tostringtag@1.0.2","is-string@1.1.1","is-symbol@1.1.1","available-typed-arrays@1.0.7","call-bind@1.0.8","call-bound@1.0.4","for-each@0.3.5","get-proto@1.0.1","has-tostringtag@1.0.2","define-properties@1.2.1","define-data-property@1.1.4","has-property-descriptors@1.0.2","debug@4.4.3","mime-types@3.0.2","debug@4.4.3","http-errors@2.0.1","on-finished@2.4.1","qs@6.15.0","http-errors@2.0.1","type-is@2.0.1","debug@4.4.3","on-finished@2.4.1","call-bound@1.0.4","get-intrinsic@1.3.0","call-bound@1.0.4","get-intrinsic@1.3.0","side-channel-map@1.0.1","debug@4.4.3","debug@4.4.3","http-errors@2.0.1","mime-types@3.0.2","on-finished@2.4.1","send@1.2.1","mime-types@3.0.2"]
+  • updating asar integrity executable resource  executablePath=release/win-unpacked/DBCanvas.exe
+  • signing with signtool.exe  path=release/win-unpacked/DBCanvas.exe
+  • building        target=nsis file=release/DBCanvas-Setup.exe archs=x64 oneClick=false perMachine=false
+  • signing with signtool.exe  path=release/win-unpacked/resources/elevate.exe
+  • signing with signtool.exe  path=release/DBCanvas-Setup.__uninstaller.exe
+  • signing with signtool.exe  path=release/DBCanvas-Setup.exe
+  • building block map  blockMapFile=release/DBCanvas-Setup.exe.blockmap

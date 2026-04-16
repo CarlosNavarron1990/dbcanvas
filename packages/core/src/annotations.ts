@@ -13,23 +13,6 @@ export interface Annotation {
   updatedAt: string;
 }
 
-/** Ensure the annotations table exists */
-async function ensureAnnotationsTable(projectPath: string) {
-  const db = await getLocalDb(projectPath);
-  if (!(await db.schema.hasTable('annotations'))) {
-    await db.schema.createTable('annotations', (table) => {
-      table.string('object_id').primary();
-      table.string('object_name');
-      table.string('object_type');
-      table.text('summary');
-      table.text('details');
-      table.timestamp('created_at').defaultTo(db.fn.now());
-      table.timestamp('updated_at').defaultTo(db.fn.now());
-    });
-    log.info('Created annotations table');
-  }
-}
-
 /** Save an AI-generated annotation for a database object */
 export async function saveAnnotation(
   objectId: string,
@@ -39,55 +22,47 @@ export async function saveAnnotation(
   details: string,
   projectPath: string,
 ): Promise<void> {
-  await ensureAnnotationsTable(projectPath);
-  const db = await getLocalDb(projectPath);
-
-  await db('annotations').insert({
-    object_id: objectId,
-    object_name: objectName,
-    object_type: objectType,
+  const store = getLocalDb(projectPath);
+  store.saveAnnotation({
+    objectId,
+    objectName,
+    objectType,
     summary,
     details,
-    updated_at: db.fn.now(),
-  }).onConflict('object_id').merge({
-    summary,
-    details,
-    updated_at: db.fn.now(),
+    updatedAt: new Date().toISOString(),
   });
+  log.info({ objectId }, 'Annotation saved');
 }
 
 /** Get annotation for a specific object */
 export async function getAnnotation(objectId: string, projectPath: string): Promise<Annotation | null> {
-  await ensureAnnotationsTable(projectPath);
-  const db = await getLocalDb(projectPath);
-
-  const row = await db('annotations').where('object_id', objectId).first();
-  if (!row) return null;
-
+  const store = getLocalDb(projectPath);
+  const ann = store.getAnnotation(objectId);
+  if (!ann) return null;
   return {
-    objectId: row.object_id,
-    objectName: row.object_name,
-    objectType: row.object_type,
-    summary: row.summary,
-    details: row.details,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    objectId: ann.objectId,
+    objectName: ann.objectName,
+    objectType: ann.objectType,
+    summary: ann.summary,
+    details: ann.details,
+    createdAt: ann.updatedAt,
+    updatedAt: ann.updatedAt,
   };
 }
 
 /** Get all annotations for a project */
 export async function getAllAnnotations(projectPath: string): Promise<Annotation[]> {
-  await ensureAnnotationsTable(projectPath);
-  const db = await getLocalDb(projectPath);
-
-  const rows = await db('annotations').select('*').orderBy('updated_at', 'desc');
-  return rows.map((row: any) => ({
-    objectId: row.object_id,
-    objectName: row.object_name,
-    objectType: row.object_type,
-    summary: row.summary,
-    details: row.details,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+  const store = getLocalDb(projectPath);
+  // Access internal data via the store's read method through the public API
+  // We'll iterate using getAnnotation for each
+  const annotationsFile = (store as any).read?.('annotations') ?? [];
+  return annotationsFile.map((ann: any) => ({
+    objectId: ann.objectId,
+    objectName: ann.objectName,
+    objectType: ann.objectType,
+    summary: ann.summary,
+    details: ann.details,
+    createdAt: ann.updatedAt,
+    updatedAt: ann.updatedAt,
   }));
 }

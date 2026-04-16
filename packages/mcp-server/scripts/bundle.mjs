@@ -15,6 +15,7 @@ await build({
     js: `var __filename_url__ = require('url').pathToFileURL(__filename).href;`,
   },
   external: [
+    // Native modules — compiled .node binaries, cannot be bundled by esbuild
     'sqlite3',
     'better-sqlite3',
     'tedious',
