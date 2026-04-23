@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import {
@@ -8,6 +8,44 @@ import {
   removeProject, updateProjectName, discoverLocalProjects,
 } from '@dbcanvas/core';
 import { detectInstalledIdes, registerInIde, unregisterFromIde, registerInAllIdes, getMcpServerPath } from './ide-registrar.js';
+
+// --- DB connection cache -------------------------------------------------
+// Reuse the same DB client across calls instead of opening/closing a TCP
+// connection every click. Idle connections older than IDLE_TTL are destroyed.
+type CachedClient = { db: any; lastUsed: number; connectionString: string };
+const dbCache = new Map<string, CachedClient>();
+const IDLE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+async function getCachedDb(connectionString: string): Promise<any> {
+  const existing = dbCache.get(connectionString);
+  if (existing) {
+    existing.lastUsed = Date.now();
+    return existing.db;
+  }
+  const db = await createDbClient(connectionString);
+  dbCache.set(connectionString, { db, lastUsed: Date.now(), connectionString });
+  return db;
+}
+
+// Periodic cleanup of idle connections
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of dbCache) {
+    if (now - entry.lastUsed > IDLE_TTL_MS) {
+      entry.db.destroy().catch((e: any) => console.error('[db-cache] destroy error:', e));
+      dbCache.delete(key);
+    }
+  }
+}, 60 * 1000); // check every minute
+
+// Destroy all connections on app quit
+app.on('before-quit', () => {
+  clearInterval(cleanupInterval);
+  for (const entry of dbCache.values()) {
+    entry.db.destroy().catch(() => {});
+  }
+  dbCache.clear();
+});
 
 export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:get-projects', async () => {
@@ -33,23 +71,15 @@ export function registerIpcHandlers() {
     if (!config?.connectionString) {
       throw new Error('No database connection string discovered for path: ' + projectPath);
     }
-    const db = await createDbClient(config.connectionString);
-    try {
-      return await syncDiscovery(db, config.solutionRoot);
-    } finally {
-      await db.destroy();
-    }
+    const db = await getCachedDb(config.connectionString);
+    return await syncDiscovery(db, config.solutionRoot);
   });
 
   ipcMain.handle('dbcanvas:get-procedure-code', async (_event, name: string, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
     if (!config?.connectionString) throw new Error('No DB config found');
-    const db = await createDbClient(config.connectionString);
-    try {
-      return await getProcedureCode(db, name);
-    } finally {
-      await db.destroy();
-    }
+    const db = await getCachedDb(config.connectionString);
+    return await getProcedureCode(db, name);
   });
 
   ipcMain.handle('dbcanvas:get-procedure-md', async (_event, name: string, projectPath?: string) => {
@@ -76,12 +106,8 @@ export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:get-table-schema', async (_event, name: string, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
     if (!config?.connectionString) throw new Error('No DB config found');
-    const db = await createDbClient(config.connectionString);
-    try {
-      return await getTableColumns(db, name);
-    } finally {
-      await db.destroy();
-    }
+    const db = await getCachedDb(config.connectionString);
+    return await getTableColumns(db, name);
   });
 
   ipcMain.handle('dbcanvas:get-shadow-data', async (_event, tableName: string, projectPath?: string) => {
@@ -92,13 +118,9 @@ export function registerIpcHandlers() {
   ipcMain.handle('dbcanvas:capture-shadow-data', async (_event, tableName: string, params: Record<string, unknown>, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
     if (!config?.connectionString) throw new Error('No DB config found');
-    const db = await createDbClient(config.connectionString);
-    try {
-      const count = await captureShadowData(db, tableName, params, undefined, config.solutionRoot);
-      return { success: true, count };
-    } finally {
-      await db.destroy();
-    }
+    const db = await getCachedDb(config.connectionString);
+    const count = await captureShadowData(db, tableName, params, undefined, config.solutionRoot);
+    return { success: true, count };
   });
 
   ipcMain.handle('dbcanvas:mcp-status', async () => {

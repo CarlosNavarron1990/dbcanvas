@@ -370,11 +370,11 @@ export async function getProcedureDependencies(db: DbClient, name?: string): Pro
           const code = await getProcedureCode(db, name);
           if (code && code !== 'Not found') {
               const regexDeps = getProcedureDependenciesFromSql(code);
-              return regexDeps.map(tbl => ({
+              return regexDeps.map(d => ({
                   referencing_name: name,
-                  referenced_name: tbl,
+                  referenced_name: d.name,
                   referencing_type: 'SQL_STORED_PROCEDURE',
-                  referenced_type: 'USER_TABLE'
+                  referenced_type: d.type === 'PROCEDURE' ? 'SQL_STORED_PROCEDURE' : 'USER_TABLE'
               }));
           }
       }
@@ -390,30 +390,47 @@ export async function getProcedureDependencies(db: DbClient, name?: string): Pro
 /**
  * Robust regex-based dependency extractor for when sys views fail
  */
-export function getProcedureDependenciesFromSql(sql: string): string[] {
-    const tableMatches = new Set<string>();
+export function getProcedureDependenciesFromSql(sql: string): { name: string, type: 'TABLE' | 'PROCEDURE' }[] {
+    const dependencies = new Map<string, 'TABLE' | 'PROCEDURE'>();
     
     // Patterns for FROM, JOIN, UPDATE, INTO (simplified)
-    // Matches patterns like [schema].[table], schema.table, or just table
-    const patterns = [
-        /(?:FROM|JOIN|UPDATE|INTO|TRUNCATE TABLE)\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi,
+    const tablePatterns = [
+        /(?:FROM|JOIN|UPDATE|INTO|TRUNCATE TABLE)\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi
+    ];
+    
+    // Patterns for EXEC/EXECUTE
+    const procPatterns = [
         /EXEC(?:UTE)?\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi
     ];
 
-    for (const pattern of patterns) {
+    const blackList = ['SELECT', 'WHERE', 'INSERT', 'GROUP', 'ORDER', 'HAVING', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'JOIN', 'FETCH', 'OFFSET', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'FOR', 'OPEN', 'CLOSE', 'DEOCLARE', 'DECLARE', 'SET', 'BEGIN', 'TRY', 'CATCH', 'TRAN', 'TRANSACTION', 'COMMIT', 'ROLLBACK'];
+
+    for (const pattern of tablePatterns) {
         let match;
         while ((match = pattern.exec(sql)) !== null) {
             const schema = match[1];
             const table = match[2];
-            
-            // Filter out common keywords and variables
-            const blackList = ['SELECT', 'WHERE', 'INSERT', 'GROUP', 'ORDER', 'HAVING', 'LEFT', 'RIGHT', 'INNER', 'OUTER', 'JOIN', 'FETCH', 'OFFSET', 'CASE', 'WHEN', 'THEN', 'ELSE', 'END', 'FOR', 'OPEN', 'CLOSE', 'DEOCLARE', 'DECLARE', 'SET'];
             if (table && !table.startsWith('@') && !blackList.includes(table.toUpperCase())) {
                 const fullName = schema ? `${schema}.${table}` : table;
-                tableMatches.add(fullName);
+                if (!dependencies.has(fullName)) {
+                    dependencies.set(fullName, 'TABLE');
+                }
             }
         }
     }
 
-    return Array.from(tableMatches);
+    for (const pattern of procPatterns) {
+        let match;
+        while ((match = pattern.exec(sql)) !== null) {
+            const schema = match[1];
+            const proc = match[2];
+            if (proc && !proc.startsWith('@') && !blackList.includes(proc.toUpperCase())) {
+                const fullName = schema ? `${schema}.${proc}` : proc;
+                // EXEC takes precedence as PROCEDURE
+                dependencies.set(fullName, 'PROCEDURE');
+            }
+        }
+    }
+
+    return Array.from(dependencies.entries()).map(([name, type]) => ({ name, type }));
 }

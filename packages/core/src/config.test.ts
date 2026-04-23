@@ -27,10 +27,12 @@ describe('getRegisteredProjects', () => {
     expect(Array.isArray(projects)).toBe(true);
   });
 
-  it('contains only strings', () => {
+  it('contains objects with name and path', () => {
     const projects = getRegisteredProjects();
     projects.forEach(p => {
-      expect(typeof p).toBe('string');
+      expect(typeof p).toBe('object');
+      expect(p).toHaveProperty('name');
+      expect(p).toHaveProperty('path');
     });
   });
 });

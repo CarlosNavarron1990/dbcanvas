@@ -8,7 +8,9 @@ describe('getProcedureDependenciesFromSql', () => {
   it('extracts table references from FROM clause', () => {
     const sql = 'SELECT * FROM dbo.Users WHERE id = 1';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('dbo.Users');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('dbo.Users');
+    expect(deps.find(d => d.name === 'dbo.Users')?.type).toBe('TABLE');
   });
 
   it('extracts table references from JOIN', () => {
@@ -19,35 +21,41 @@ describe('getProcedureDependenciesFromSql', () => {
       LEFT JOIN Products p ON o.product_id = p.id
     `;
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('Users');
-    expect(deps).toContain('Orders');
-    expect(deps).toContain('Products');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('Users');
+    expect(names).toContain('Orders');
+    expect(names).toContain('Products');
   });
 
   it('extracts EXEC references as dependencies', () => {
     const sql = 'EXEC dbo.SP_ProcessOrder @id = 1';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('dbo.SP_ProcessOrder');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('dbo.SP_ProcessOrder');
+    expect(deps.find(d => d.name === 'dbo.SP_ProcessOrder')?.type).toBe('PROCEDURE');
   });
 
   it('filters out SQL keywords', () => {
     const sql = 'SELECT * FROM Users WHERE id IN (SELECT user_id FROM Orders)';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).not.toContain('SELECT');
-    expect(deps).not.toContain('WHERE');
+    const names = deps.map(d => d.name);
+    expect(names).not.toContain('SELECT');
+    expect(names).not.toContain('WHERE');
   });
 
   it('filters out variables starting with @', () => {
     const sql = 'INSERT INTO @TempTable SELECT * FROM Users';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).not.toContain('@TempTable');
-    expect(deps).toContain('Users');
+    const names = deps.map(d => d.name);
+    expect(names).not.toContain('@TempTable');
+    expect(names).toContain('Users');
   });
 
   it('handles bracket notation [schema].[table]', () => {
     const sql = 'SELECT * FROM [dbo].[UserAccounts]';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('dbo.UserAccounts');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('dbo.UserAccounts');
   });
 
   it('returns empty for queries with no table references', () => {
@@ -59,7 +67,8 @@ describe('getProcedureDependenciesFromSql', () => {
   it('handles UPDATE statements', () => {
     const sql = 'UPDATE Users SET name = @name WHERE id = @id';
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('Users');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('Users');
   });
 
   it('handles complex SP with multiple operations', () => {
@@ -79,12 +88,16 @@ describe('getProcedureDependenciesFromSql', () => {
       END
     `;
     const deps = getProcedureDependenciesFromSql(sql);
-    expect(deps).toContain('Customers');
-    expect(deps).toContain('Orders');
-    expect(deps).toContain('OrderItems');
-    expect(deps).toContain('Inventory');
-    expect(deps).toContain('AuditLog');
-    expect(deps).toContain('SP_SendNotification');
+    const names = deps.map(d => d.name);
+    expect(names).toContain('Customers');
+    expect(names).toContain('Orders');
+    expect(names).toContain('OrderItems');
+    expect(names).toContain('Inventory');
+    expect(names).toContain('AuditLog');
+    expect(names).toContain('SP_SendNotification');
+    
+    expect(deps.find(d => d.name === 'SP_SendNotification')?.type).toBe('PROCEDURE');
+    expect(deps.find(d => d.name === 'Customers')?.type).toBe('TABLE');
   });
 });
 

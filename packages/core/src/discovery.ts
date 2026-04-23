@@ -21,6 +21,26 @@ export interface DiscoveryEdge {
   label?: string;
 }
 
+/** Helper to map database type descriptors to DBCanvas node IDs */
+function getNodeIdFromType(name: string, typeDesc?: string): string {
+  const cleanName = name.replace(/[\[\]]/g, '');
+  const upperName = cleanName.toUpperCase();
+  const parts = upperName.split('.');
+  const baseName = parts[parts.length - 1];
+
+  // 1. High priority: Guess from name prefixes
+  if (baseName.startsWith('SP_') || baseName.startsWith('USP_')) return `sp:${name}`;
+  if (baseName.startsWith('VW_')) return `view:${name}`;
+
+  // 2. Low priority: Use database type metadata
+  const type = typeDesc?.toUpperCase() || '';
+  if (type.includes('PROCEDURE') || type === 'P') return `sp:${name}`;
+  if (type.includes('VIEW') || type === 'V') return `view:${name}`;
+  if (type.includes('FUNCTION') || type === 'FN' || type === 'TF' || type === 'IF') return `sp:${name}`;
+
+  return `table:${name}`;
+}
+
 /** Close all cached local DB connections (no-op for JSON store, kept for API compat) */
 export async function closeAllLocalDbs(): Promise<void> {
   closeAllStores();
@@ -110,10 +130,21 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
   // 4. SP Dependencies
   const deps = await getProcedureDependencies(remoteDb);
   for (const dep of deps) {
-    store.upsertNode({ id: `sp:${dep.referencing_name}`, name: dep.referencing_name, type: 'PROCEDURE' });
+    const sourceId = `sp:${dep.referencing_name}`;
+    const targetId = getNodeIdFromType(dep.referenced_name, dep.referenced_type);
+    
+    store.upsertNode({ id: sourceId, name: dep.referencing_name, type: 'PROCEDURE' });
+    if (targetId.startsWith('sp:')) {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'PROCEDURE' });
+    } else if (targetId.startsWith('view:')) {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'VIEW' });
+    } else {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'TABLE' });
+    }
+
     store.upsertEdge({
-      source: `sp:${dep.referencing_name}`,
-      target: `table:${dep.referenced_name}`,
+      source: sourceId,
+      target: targetId,
       type: 'USAGE',
     });
   }
@@ -184,9 +215,18 @@ export async function discoverObject(
 
     const spDeps = await getProcedureDependencies(remoteDb, name);
     for (const dep of spDeps) {
-      store.upsertNode({ id: `table:${dep.referenced_name}`, name: dep.referenced_name, type: 'TABLE' });
-      store.upsertEdge({ source: `sp:${name}`, target: `table:${dep.referenced_name}`, type: 'USAGE' });
-      await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => { });
+      const targetId = getNodeIdFromType(dep.referenced_name, dep.referenced_type);
+      
+      if (targetId.startsWith('sp:')) {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'PROCEDURE' });
+      } else if (targetId.startsWith('view:')) {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'VIEW' });
+      } else {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'TABLE' });
+        await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => { });
+      }
+
+      store.upsertEdge({ source: `sp:${name}`, target: targetId, type: 'USAGE' });
     }
   } else if (type === 'TABLE') {
     store.upsertNode({ id: `table:${name}`, name, type: 'TABLE' });

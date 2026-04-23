@@ -230,26 +230,27 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadProcedureDetail: async (name) => {
     set({ procedureCode: '', procedureMd: '' });
-    try {
-      const [code, md] = await Promise.all([
-        api.getProcedureCode(name),
-        api.getProcedureMd(name),
-      ]);
-      set({ procedureCode: code || '-- No code available', procedureMd: md || '' });
-    } catch {
-      set({ procedureCode: '-- Failed to fetch', procedureMd: '' });
-    }
+    const [codeRes, mdRes] = await Promise.allSettled([
+      api.getProcedureCode(name),
+      api.getProcedureMd(name),
+    ]);
+    const code = codeRes.status === 'fulfilled'
+      ? (codeRes.value || '-- No code available')
+      : `-- Error al obtener código: ${(codeRes.reason as any)?.message || 'fetch failed'}`;
+    const md = mdRes.status === 'fulfilled' ? (mdRes.value || '') : '';
+    set({ procedureCode: code, procedureMd: md });
   },
 
   loadTableDetail: async (name) => {
     set({ tableSchema: [], shadowData: [] });
-    try {
-      const [schema, shadow] = await Promise.all([
-        api.getTableSchema(name),
-        api.getShadowData(name),
-      ]);
-      set({ tableSchema: schema || [], shadowData: shadow || [] });
-    } catch {}
+    const [schemaRes, shadowRes] = await Promise.allSettled([
+      api.getTableSchema(name),
+      api.getShadowData(name),
+    ]);
+    set({
+      tableSchema: schemaRes.status === 'fulfilled' ? (schemaRes.value || []) : [],
+      shadowData: shadowRes.status === 'fulfilled' ? (shadowRes.value || []) : [],
+    });
   },
 
   captureData: async (tableName, params) => {
