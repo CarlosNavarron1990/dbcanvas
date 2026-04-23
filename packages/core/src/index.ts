@@ -22,7 +22,10 @@ export {
   captureShadowData,
   getShadowData,
 } from './discovery.js';
-export type { DiscoveryNode, DiscoveryEdge, GraphQueryOptions } from './discovery.js';
+export type { DiscoveryNode, DiscoveryEdge, GraphQueryOptions, SyncProgress } from './discovery.js';
+
+export { getStore } from './local-store.js';
+export type { StoreSchemaColumn } from './local-store.js';
 
 export { logger, createChildLogger } from './logger.js';
 export { generateAgentPrompt, listAgents, AGENT_PERSPECTIVES } from './agents.js';

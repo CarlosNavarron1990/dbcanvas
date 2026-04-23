@@ -6,6 +6,7 @@ import {
   createDbClient, discoverConnectionString, getRegisteredProjects,
   getProcedureCode, getTableColumns,
   removeProject, updateProjectName, discoverLocalProjects,
+  getStore,
 } from '@dbcanvas/core';
 import { detectInstalledIdes, registerInIde, unregisterFromIde, registerInAllIdes, getMcpServerPath } from './ide-registrar.js';
 
@@ -77,6 +78,25 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('dbcanvas:get-procedure-code', async (_event, name: string, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
+    const root = config?.solutionRoot || projectPath || process.cwd();
+
+    // Prefer local .md cache (populated during syncDiscovery)
+    const procDir = path.join(root, '.dbcanvas', 'procedures');
+    const candidates = [
+      path.join(procDir, `${name}.md`),
+      path.join(procDir, `${name.replace(/\./g, '_')}.md`),
+    ];
+    for (const mdPath of candidates) {
+      if (fs.existsSync(mdPath)) {
+        const raw = fs.readFileSync(mdPath, 'utf8');
+        // Extract SQL from ```sql fenced block
+        const m = raw.match(/```sql\n([\s\S]*?)\n```/);
+        if (m) return m[1];
+        return raw;
+      }
+    }
+
+    // Fallback: live DB query
     if (!config?.connectionString) throw new Error('No DB config found');
     const db = await getCachedDb(config.connectionString);
     return await getProcedureCode(db, name);
@@ -105,9 +125,26 @@ export function registerIpcHandlers() {
 
   ipcMain.handle('dbcanvas:get-table-schema', async (_event, name: string, projectPath?: string) => {
     const config = discoverConnectionString(projectPath);
+    const root = config?.solutionRoot || projectPath || process.cwd();
+
+    // Prefer local cache (populated during syncDiscovery)
+    try {
+      const store = getStore(path.join(root, '.dbcanvas'));
+      const cached = store.getSchema(name);
+      if (cached && cached.length > 0) return cached;
+    } catch { /* fall through to live query */ }
+
+    // Fallback: live DB query (also updates cache)
     if (!config?.connectionString) throw new Error('No DB config found');
     const db = await getCachedDb(config.connectionString);
-    return await getTableColumns(db, name);
+    const columns = await getTableColumns(db, name);
+    try {
+      const store = getStore(path.join(root, '.dbcanvas'));
+      const all = store.getAllSchemas();
+      all[name] = columns;
+      store.setAllSchemas(all);
+    } catch { /* best-effort */ }
+    return columns;
   });
 
   ipcMain.handle('dbcanvas:get-shadow-data', async (_event, tableName: string, projectPath?: string) => {

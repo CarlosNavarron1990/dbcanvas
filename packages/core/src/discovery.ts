@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs';
-import { DbClient, getTableForeignKeys, getProcedureDependencies, getTableColumns } from './database.js';
+import { DbClient, getTableForeignKeys, getProcedureDependencies, getTableColumns, getProcedureCode } from './database.js';
 import { discoverConnectionString } from './config.js';
 import { createChildLogger } from './logger.js';
 import { getStore, closeAllStores, LocalStore } from './local-store.js';
@@ -91,8 +91,22 @@ export function getLocalDb(projectPathOverride?: string): LocalStore {
 
 // ─── Sync ────────────────────────────────────────────────────────────────────
 
-export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: string): Promise<{ nodes: number; edges: number }> {
+export interface SyncProgress {
+  phase: 'tables' | 'views' | 'fks' | 'deps' | 'schemas' | 'sp-code' | 'done';
+  done: number;
+  total: number;
+  current?: string;
+}
+
+export async function syncDiscovery(
+  remoteDb: DbClient,
+  projectPathOverride?: string,
+  onProgress?: (p: SyncProgress) => void
+): Promise<{ nodes: number; edges: number; schemasCached: number; spCodeCached: number }> {
   const store = getLocalDb(projectPathOverride);
+  const dbDir = resolveDbcanvasDir(projectPathOverride);
+  const procDir = path.join(dbDir, 'procedures');
+  if (!fs.existsSync(procDir)) fs.mkdirSync(procDir, { recursive: true });
 
   // 1. Tables
   const tables = await remoteDb.raw(
@@ -104,6 +118,7 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
   for (const row of tableRows) {
     store.upsertNode({ id: `table:${row.name}`, name: row.name, type: 'TABLE' });
   }
+  onProgress?.({ phase: 'tables', done: tableRows.length, total: tableRows.length });
 
   // 2. Views
   const views = await remoteDb.raw(
@@ -115,6 +130,7 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
   for (const row of viewRows) {
     store.upsertNode({ id: `view:${row.name}`, name: row.name, type: 'VIEW' });
   }
+  onProgress?.({ phase: 'views', done: viewRows.length, total: viewRows.length });
 
   // 3. Foreign Keys
   const fks = await getTableForeignKeys(remoteDb);
@@ -126,13 +142,14 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
       label: fk.constraint_name,
     });
   }
+  onProgress?.({ phase: 'fks', done: fks.length, total: fks.length });
 
-  // 4. SP Dependencies
+  // 4. SP Dependencies (also discovers SPs themselves)
   const deps = await getProcedureDependencies(remoteDb);
   for (const dep of deps) {
     const sourceId = `sp:${dep.referencing_name}`;
     const targetId = getNodeIdFromType(dep.referenced_name, dep.referenced_type);
-    
+
     store.upsertNode({ id: sourceId, name: dep.referencing_name, type: 'PROCEDURE' });
     if (targetId.startsWith('sp:')) {
       store.upsertNode({ id: targetId, name: dep.referenced_name, type: 'PROCEDURE' });
@@ -148,8 +165,59 @@ export async function syncDiscovery(remoteDb: DbClient, projectPathOverride?: st
       type: 'USAGE',
     });
   }
+  onProgress?.({ phase: 'deps', done: deps.length, total: deps.length });
 
-  return { nodes: store.nodeCount(), edges: store.edgeCount() };
+  // 5. Table schemas — cache column definitions for all tables+views
+  const tablesAndViews = [
+    ...tableRows.map((r: any) => ({ name: r.name, type: 'TABLE' as const })),
+    ...viewRows.map((r: any) => ({ name: r.name, type: 'VIEW' as const })),
+  ];
+  const schemas = store.getAllSchemas();
+  let schemasCached = 0;
+  const totalSchemas = tablesAndViews.length;
+  for (let i = 0; i < tablesAndViews.length; i++) {
+    const { name } = tablesAndViews[i];
+    if (schemas[name]) continue; // skip already cached (incremental)
+    try {
+      const columns = await getTableColumns(remoteDb, name);
+      schemas[name] = columns;
+      schemasCached++;
+    } catch (e) {
+      log.warn({ table: name, err: (e as Error).message }, 'failed to fetch schema');
+    }
+    // Flush every 50 tables so partial progress isn't lost if interrupted
+    if ((i + 1) % 50 === 0) store.setAllSchemas(schemas);
+    onProgress?.({ phase: 'schemas', done: i + 1, total: totalSchemas, current: name });
+  }
+  store.setAllSchemas(schemas);
+
+  // 6. SP code — fetch source for all discovered procedures, save as .md
+  const spNodes = store.getNodes('PROCEDURE');
+  let spCodeCached = 0;
+  const totalSps = spNodes.length;
+  for (let i = 0; i < spNodes.length; i++) {
+    const sp = spNodes[i];
+    // Filename: replace dots with underscores (schema-qualified names)
+    const fileName = sp.name.replace(/\./g, '_');
+    const mdPath = path.join(procDir, `${fileName}.md`);
+    const altPath = path.join(procDir, `${sp.name}.md`);
+    if (fs.existsSync(mdPath) || fs.existsSync(altPath)) continue; // skip already cached
+    try {
+      const code = await getProcedureCode(remoteDb, sp.name);
+      if (code && code !== 'Not found') {
+        const md = `# ${sp.name}\n\n\`\`\`sql\n${code}\n\`\`\`\n`;
+        fs.writeFileSync(mdPath, md);
+        spCodeCached++;
+      }
+    } catch (e) {
+      log.warn({ sp: sp.name, err: (e as Error).message }, 'failed to fetch SP code');
+    }
+    onProgress?.({ phase: 'sp-code', done: i + 1, total: totalSps, current: sp.name });
+  }
+
+  onProgress?.({ phase: 'done', done: 0, total: 0 });
+  log.info({ nodes: store.nodeCount(), edges: store.edgeCount(), schemasCached, spCodeCached }, 'sync complete');
+  return { nodes: store.nodeCount(), edges: store.edgeCount(), schemasCached, spCodeCached };
 }
 
 // ─── Graph ────────────────────────────────────────────────────────────────────

@@ -50,6 +50,12 @@ export interface StoreAnnotation {
   updatedAt: string;
 }
 
+export interface StoreSchemaColumn {
+  name: string;
+  type: string;
+  nullable: string;
+}
+
 // ─── Store class ─────────────────────────────────────────────────────────────
 
 export class LocalStore {
@@ -130,6 +136,28 @@ export class LocalStore {
 
   hasShadowTable(tableName: string): boolean {
     return fs.existsSync(this.filePath(`shadow_${tableName}`));
+  }
+
+  // ── Table schemas (cached column definitions) ────────────────────────────
+
+  getAllSchemas(): Record<string, StoreSchemaColumn[]> {
+    const p = this.filePath('schemas');
+    try {
+      if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf8'));
+    } catch { /* corrupt — start fresh */ }
+    return {};
+  }
+
+  getSchema(tableName: string): StoreSchemaColumn[] | null {
+    return this.getAllSchemas()[tableName] || null;
+  }
+
+  hasSchema(tableName: string): boolean {
+    return tableName in this.getAllSchemas();
+  }
+
+  setAllSchemas(schemas: Record<string, StoreSchemaColumn[]>): void {
+    fs.writeFileSync(this.filePath('schemas'), JSON.stringify(schemas, null, 2));
   }
 
   // ── Captures ──────────────────────────────────────────────────────────────
