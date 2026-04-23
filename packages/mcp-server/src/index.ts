@@ -24,7 +24,7 @@ import {
   findObjectAcrossDatabases, getProcedureCode, getTableColumns,
   getProcedureDependencies, executeSafeRead,
   testConnection, createDbClient,
-  discoverConnectionString, getRegisteredProjects,
+  discoverConnectionString, getRegisteredProjects, registerSolutionRoot,
   syncDiscovery, getDiscoveryGraph, discoverObject, captureShadowData,
   closeAllLocalDbs, traceFieldLineage,
   saveAnnotation, getAnnotation,
@@ -80,8 +80,22 @@ setInterval(() => {
 }, 5 * 60 * 1000).unref();
 
 function getActiveContext(projectPathOverride?: string) {
-  // Resolve search path: explicit arg > cwd > script directory
-  let searchPath = projectPathOverride || process.cwd();
+  // Resolve search path: explicit arg > CLI arg > cwd > script directory
+  let argPath = process.argv.find(arg => arg.startsWith('--project-path='))?.split('=')[1];
+  if (!argPath) {
+    const idx = process.argv.indexOf('--project-path');
+    if (idx !== -1 && idx + 1 < process.argv.length) {
+      argPath = process.argv[idx + 1];
+    }
+  }
+  let searchPath = projectPathOverride || argPath || process.cwd();
+
+  // If an explicit project path was provided, register it in the global registry
+  // so the desktop app can discover it
+  const effectivePath = projectPathOverride || argPath;
+  if (effectivePath) {
+    registerSolutionRoot(effectivePath);
+  }
 
   // If cwd is root or home, fall back to the directory where this script lives
   // (which is inside the DBCanvas project, and findSolutionRoot will walk up to the .sln)
@@ -102,7 +116,7 @@ function getActiveContext(projectPathOverride?: string) {
   return {
     activeUrl,
     config: currentConfig,
-    projectRoot: currentConfig?.solutionRoot || searchPath
+    projectRoot: argPath || currentConfig?.solutionRoot || searchPath
   };
 }
 

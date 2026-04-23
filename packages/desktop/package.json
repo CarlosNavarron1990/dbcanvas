@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc && npx esbuild src/preload.ts --bundle --platform=node --format=cjs --outfile=build/preload.js --external:electron",
     "build:dashboard": "cd dashboard && npm run build",
-    "build:full": "tsc && npx esbuild src/preload.ts --bundle --platform=node --format=cjs --outfile=build/preload.js --external:electron && cd dashboard && npm run build",
+    "build:full": "tsc && npx esbuild src/preload.ts --bundle --platform=node --format=cjs --outfile=build/preload.js --external:electron",
     "start": "npm run build:full && electron .",
     "dashboard": "node build/server.js",
     "clean": "rm -rf build",
@@ -30,7 +30,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^20.11.24",
-    "electron": "41.1.1",
+    "electron": "34.1.1",
     "electron-builder": "^26.8.1",
     "typescript": "^5.3.3"
   },
@@ -50,7 +50,6 @@
       "!**/*.map"
     ],
     "asarUnpack": [
-      "**/node_modules/sqlite3/**",
       "**/*.node"
     ],
     "publish": {

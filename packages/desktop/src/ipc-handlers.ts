@@ -19,7 +19,7 @@ export function registerIpcHandlers() {
     return {
       solutionRoot: config?.solutionRoot || projectPath || process.cwd(),
       configSource: config?.source || 'None',
-      databasePath: path.join(config?.solutionRoot || projectPath || process.cwd(), '.dbcanvas', 'discovery.db'),
+      databasePath: path.join(config?.solutionRoot || projectPath || process.cwd(), '.dbcanvas', 'nodes.json'),
     };
   });
 

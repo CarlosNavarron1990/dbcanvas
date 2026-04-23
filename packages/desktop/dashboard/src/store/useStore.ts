@@ -274,20 +274,20 @@ export const useStore = create<AppState>((set, get) => ({
     await get().loadIdes();
   },
 
-  unregisterIde: async (configPath) => {
+  unregisterIde: async (configPath: string) => {
     await api.unregisterIde(configPath);
     await get().loadIdes();
   },
 
   registerAllIdes: async () => {
     const result = await api.registerAllIdes();
-    const count = result.results.filter((r: any) => r.success).length;
+    const count = result.results.filter((r: { success: boolean }) => r.success).length;
     set({ ideMessage: `Registered in ${count} IDE(s)` });
     setTimeout(() => set({ ideMessage: '' }), 3000);
     await get().loadIdes();
   },
 
-  setSession: (session) => set({ session }),
+  setSession: (session: UserSession | null) => set({ session }),
 
   logout: async () => {
     const w = window as any;
@@ -296,5 +296,5 @@ export const useStore = create<AppState>((set, get) => ({
     set({ session: null });
   },
 
-  setUpdateStatus: (status, version) => set({ updateStatus: status, updateVersion: version || '' }),
+  setUpdateStatus: (status: UpdateStatus, version?: string) => set({ updateStatus: status, updateVersion: version || '' }),
 }));

@@ -39,6 +39,7 @@ export type { LineageNode, LineageEdge, LineageGraph } from './lineage.js';
 export {
   discoverConnectionString,
   findSolutionRoot,
+  registerSolutionRoot,
   getRegisteredProjects,
   removeProject,
   updateProjectName,

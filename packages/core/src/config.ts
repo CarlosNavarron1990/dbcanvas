@@ -192,9 +192,9 @@ export function findSolutionRoot(startDir: string): string {
   return result;
 }
 
-function registerSolutionRoot(rootPath: string) {
+export function registerSolutionRoot(rootPath: string) {
   try {
-    const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+    const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.dbcanvas_registry.json');
     const registryDir = path.dirname(registryPath);
     if (!fs.existsSync(registryDir)) fs.mkdirSync(registryDir, { recursive: true });
 
@@ -212,7 +212,7 @@ function registerSolutionRoot(rootPath: string) {
 
 export function getRegisteredProjects(): RegisteredProject[] {
   try {
-    const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+    const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.dbcanvas_registry.json');
     if (fs.existsSync(registryPath)) {
       const data = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
 
@@ -233,7 +233,7 @@ export function getRegisteredProjects(): RegisteredProject[] {
 
 export function removeProject(projectPath: string) {
   const projects = getRegisteredProjects().filter(p => p.path !== projectPath);
-  const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+  const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.dbcanvas_registry.json');
   fs.writeFileSync(registryPath, JSON.stringify(projects, null, 2));
 }
 
@@ -241,7 +241,7 @@ export function updateProjectName(projectPath: string, newName: string) {
   const projects = getRegisteredProjects().map(p =>
     p.path === projectPath ? { ...p, name: newName } : p
   );
-  const registryPath = path.join(process.env.HOME || '.', '.dbcanvas_registry.json');
+  const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || '.', '.dbcanvas_registry.json');
   fs.writeFileSync(registryPath, JSON.stringify(projects, null, 2));
 }
 

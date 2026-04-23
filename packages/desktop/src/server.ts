@@ -49,7 +49,7 @@ export function startServer(port: number = 3000) {
     sendJson(res, {
       solutionRoot: root,
       configSource: config?.source || 'None',
-      databasePath: path.join(root, '.dbcanvas', 'discovery.db'),
+      databasePath: path.join(root, '.dbcanvas', 'nodes.json'),
     });
   });
 
