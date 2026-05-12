@@ -60,6 +60,8 @@ export interface StoreSchemaColumn {
 
 export class LocalStore {
   private dir: string;
+  private nodesCache: StoreNode[] | null = null;
+  private edgesCache: StoreEdge[] | null = null;
 
   constructor(dbcanvasDir: string) {
     this.dir = dbcanvasDir;
@@ -89,40 +91,46 @@ export class LocalStore {
   // ── Nodes ─────────────────────────────────────────────────────────────────
 
   getNodes(type?: string): StoreNode[] {
-    const nodes = this.read<StoreNode>('nodes');
-    return type ? nodes.filter(n => n.type === type) : nodes;
+    if (!this.nodesCache) this.nodesCache = this.read<StoreNode>('nodes');
+    return type ? this.nodesCache.filter(n => n.type === type) : this.nodesCache;
   }
 
   upsertNode(node: StoreNode): void {
-    const nodes = this.read<StoreNode>('nodes');
-    const i = nodes.findIndex(n => n.id === node.id);
+    if (!this.nodesCache) this.nodesCache = this.read<StoreNode>('nodes');
+    const i = this.nodesCache.findIndex(n => n.id === node.id);
     const record = { ...node, updated_at: new Date().toISOString() };
-    if (i >= 0) { nodes[i] = record; } else { nodes.push(record); }
-    this.write('nodes', nodes);
+    if (i >= 0) { this.nodesCache[i] = record; } else { this.nodesCache.push(record); }
+    this.write('nodes', this.nodesCache);
   }
 
-  nodeCount(): number { return this.read<StoreNode>('nodes').length; }
+  nodeCount(): number { 
+    if (!this.nodesCache) this.nodesCache = this.read<StoreNode>('nodes');
+    return this.nodesCache.length; 
+  }
 
   // ── Edges ─────────────────────────────────────────────────────────────────
 
   getEdges(nodeIds?: string[]): StoreEdge[] {
-    const edges = this.read<StoreEdge>('edges');
-    if (!nodeIds) return edges;
-    return edges.filter(e => nodeIds.includes(e.source) || nodeIds.includes(e.target));
+    if (!this.edgesCache) this.edgesCache = this.read<StoreEdge>('edges');
+    if (!nodeIds) return this.edgesCache;
+    return this.edgesCache.filter(e => nodeIds.includes(e.source) || nodeIds.includes(e.target));
   }
 
   upsertEdge(edge: StoreEdge): void {
-    const edges = this.read<StoreEdge>('edges');
-    const exists = edges.some(
+    if (!this.edgesCache) this.edgesCache = this.read<StoreEdge>('edges');
+    const exists = this.edgesCache.some(
       e => e.source === edge.source && e.target === edge.target && e.type === edge.type
     );
     if (!exists) {
-      edges.push(edge);
-      this.write('edges', edges);
+      this.edgesCache.push(edge);
+      this.write('edges', this.edgesCache);
     }
   }
 
-  edgeCount(): number { return this.read<StoreEdge>('edges').length; }
+  edgeCount(): number {
+    if (!this.edgesCache) this.edgesCache = this.read<StoreEdge>('edges');
+    return this.edgesCache.length;
+  }
 
   // ── Shadow tables (simple JSON maps) ──────────────────────────────────────
 

@@ -117,6 +117,8 @@ const GraphCanvas: React.FC = () => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; node: any } | null>(null);
   const [forces, setForces] = useState<ForceSettings>({ ...DEFAULT_FORCES });
   const [showDevPanel, setShowDevPanel] = useState(false);
+  const hasZoomedInitial = useRef(false);
+  const lastRenderTime = useRef(0);
   const [visibleTypes, setVisibleTypes] = useState<Record<string, boolean>>({
     TABLE: true,
     PROCEDURE: true,
@@ -248,17 +250,35 @@ const GraphCanvas: React.FC = () => {
   useEffect(() => {
     const fg = fgRef.current;
     if (!fg) return;
+    
+    const nodeCount = graphData.nodes.length;
+    const isLarge = nodeCount > 800;
+
+    // Adaptive forces: large graphs need stronger repulsion and faster cooling
     fg.d3Force('center')?.strength(forces.centerForce);
-    fg.d3Force('charge')?.strength(forces.chargeForce);
-    fg.d3Force('link')?.strength(forces.linkForce).distance(forces.linkDistance);
+    fg.d3Force('charge')?.strength(isLarge ? forces.chargeForce * 1.5 : forces.chargeForce);
+    fg.d3Force('link')?.strength(forces.linkForce).distance(isLarge ? forces.linkDistance * 1.2 : forces.linkDistance);
+    
+    if (isLarge) {
+      fg.d3AlphaDecay(0.08); // Settle faster
+      fg.d3VelocityDecay(0.5); // Less "bouncy"
+    }
+
     fg.d3ReheatSimulation();
-  }, [forces]);
+  }, [forces, graphData.nodes.length]);
 
   // --- Auto zoom-to-fit ---------------------------------------------------
   useEffect(() => {
     if (filteredData.nodes.length > 0 && fgRef.current) {
+      // If we already zoomed and the data didn't change drastically, don't force a re-zoom
+      // This prevents the "restarts" (jumping) when slightly filtering or during minor updates
+      if (hasZoomedInitial.current && Math.abs(filteredData.nodes.length - stats.visible) < 5) return;
+      
       const delay = reducedMotion ? 50 : 400;
-      setTimeout(() => fgRef.current?.zoomToFit(delay, 80), reducedMotion ? 100 : 600);
+      setTimeout(() => {
+        fgRef.current?.zoomToFit(delay, 80);
+        hasZoomedInitial.current = true;
+      }, reducedMotion ? 100 : 600);
     }
   }, [filteredData.nodes.length, reducedMotion]);
 
@@ -366,6 +386,11 @@ const GraphCanvas: React.FC = () => {
     const nodes = filteredData.nodes as any[];
     if (!nodes.length) return;
 
+    // Throttle label rendering to ~30fps for performance on large graphs
+    const now = performance.now();
+    if (now - lastRenderTime.current < 32 && nodes.length > 500) return;
+    lastRenderTime.current = now;
+
     const canvas = ctx.canvas as HTMLCanvasElement;
     const bounds = getVisibleBounds(ctx, canvas, 80);
 
@@ -391,7 +416,13 @@ const GraphCanvas: React.FC = () => {
       candidates.push({ node: n, priority });
     }
 
-    candidates.sort((a, b) => b.priority - a.priority);
+    // Limit candidates to avoid O(N^2) collision checks on massive graphs
+    if (candidates.length > 400) {
+       candidates.sort((a, b) => b.priority - a.priority);
+       candidates.splice(150); // Keep top 150 labels max
+    } else {
+       candidates.sort((a, b) => b.priority - a.priority);
+    }
 
     // Draw with AABB collision detection (world coords)
     const drawn: { x1: number; y1: number; x2: number; y2: number }[] = [];
@@ -933,7 +964,7 @@ const GraphCanvas: React.FC = () => {
         cooldownTime={reducedMotion ? 1500 : 4000}
         warmupTicks={reducedMotion ? 20 : 50}
         enableNodeDrag={true}
-        minZoom={0.1}
+        minZoom={0.02}
         maxZoom={20}
       />
     </div>

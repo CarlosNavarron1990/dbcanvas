@@ -27,11 +27,13 @@ function tryParseConfigFile(configPath: string | null, fileName: string, solutio
       for (const match of matches) {
         let connStr = match[1];
         // Skip Entity Framework metadata strings — extract inner provider connection string
-        if (connStr.startsWith('metadata=')) {
-          const inner = connStr.match(/provider connection string=&quot;([^&]+)&quot;/i)
-            || connStr.match(/provider connection string="([^"]+)"/i);
+        const unescaped = connStr.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+        if (unescaped.startsWith('metadata=')) {
+          const inner = unescaped.match(/provider connection string="([^"]+)"/i);
           if (inner) connStr = inner[1];
-          else continue; // Skip if can't extract inner connection
+          else continue; 
+        } else {
+          connStr = unescaped;
         }
         // Prefer plain ADO.NET strings (have Server= or Data Source= but no metadata=)
         if (connStr.includes('Data Source=') || connStr.includes('data source=') || connStr.includes('Server=')) {
@@ -109,11 +111,25 @@ export function discoverConnectionString(overridePath?: string): DbConfig | null
         for (const entry of entries) {
           if (!entry.isDirectory() || entry.name.startsWith('.') || entry.name === 'node_modules') continue;
           const subDir = path.join(solutionRoot, entry.name);
-          for (const fileName of COMMON_CONFIG_FILES) {
+          for (const fileName of [...COMMON_ENV_FILES, ...COMMON_CONFIG_FILES]) {
             const configPath = path.join(subDir, fileName);
             if (fs.existsSync(configPath)) {
-              const result = tryParseConfigFile(configPath, fileName, solutionRoot);
-              if (result) return result;
+              if (COMMON_ENV_FILES.includes(fileName)) {
+                try {
+                  const stats = fs.statSync(configPath);
+                  const envConfig = dotenv.parse(fs.readFileSync(configPath));
+                  const connectionString = envConfig.DATABASE_URL ||
+                    envConfig.DB_CONNECTION ||
+                    envConfig.CONNECTION_STRING ||
+                    envConfig.DB_URL;
+                  if (connectionString) {
+                    return { connectionString, source: `${fileName} (${configPath})`, configDir: path.dirname(configPath), solutionRoot, filePath: configPath, lastModified: stats.mtime };
+                  }
+                } catch (e) { }
+              } else {
+                const result = tryParseConfigFile(configPath, fileName, solutionRoot);
+                if (result) return result;
+              }
             }
           }
         }
