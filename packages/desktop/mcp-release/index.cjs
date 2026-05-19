@@ -18289,7 +18289,7 @@ var require_querycompiler = __commonJS({
       first: "select",
       pluck: "select"
     };
-    var invalidClauses = {
+    var defaultInvalidClauses = {
       delete: ["having", "limit"],
       truncate: ["where", "having", "limit"]
     };
@@ -18311,14 +18311,17 @@ var require_querycompiler = __commonJS({
         this.bindingsHolder = this;
         this.builder = this.formatter.builder;
       }
-      // Categorically refuse to execute certain queries that have defined certain clause groups
+      // Categorically refuse to execute certain queries that have defined certain clause groups.
       // For example, if a "having" clause is defined but we're executing a "delete" query, that
       // is never valid in any of the supported dialects.
+      //
+      // Dialects override `invalidClauses` on the prototype to adjust which clauses are
+      // disallowed for each verb (e.g. MySQL allows `limit` on `delete`).
       _preValidate() {
         const method = this.method;
         const verb = hasOwn(methodAliases, method) ? methodAliases[method] : method;
-        if (!hasOwn(invalidClauses, verb)) return;
-        const invalid = invalidClauses[verb];
+        const invalid = this.invalidClauses[verb];
+        if (!invalid) return;
         for (let i = 0; i < invalid.length; i++) {
           const clause = invalid[i];
           const hasNonEmptyGrouped = hasOwn(this.grouped, clause) && this.grouped[clause].length > 0;
@@ -19502,6 +19505,7 @@ var require_querycompiler = __commonJS({
         ) + ")";
       }
     };
+    QueryCompiler.prototype.invalidClauses = defaultInvalidClauses;
     module2.exports = QueryCompiler;
   }
 });
@@ -21948,14 +21952,16 @@ var require_sqlite_querycompiler = __commonJS({
           if (insertValues.length === 0) {
             return "";
           } else if (insertValues.length === 1 && insertValues[0] && isEmpty(insertValues[0])) {
-            return {
-              sql: sql + this._emptyInsertValue
-            };
+            sql += this._emptyInsertValue;
+            const { returning: returning2 } = this.single;
+            if (returning2) sql += this._returning(returning2);
+            return { sql, returning: returning2 };
           }
         } else if (typeof insertValues === "object" && isEmpty(insertValues)) {
-          return {
-            sql: sql + this._emptyInsertValue
-          };
+          sql += this._emptyInsertValue;
+          const { returning: returning2 } = this.single;
+          if (returning2) sql += this._returning(returning2);
+          return { sql, returning: returning2 };
         }
         const insertData = this._prepInsert(insertValues);
         if (isString(insertData)) {
@@ -30410,7 +30416,7 @@ var require_postgres = __commonJS({
           }
           path5 = [path5];
         }
-        path5 = path5.map((schemaName) => `"${schemaName}"`).join(",");
+        path5 = path5.map((schemaName) => `"${schemaName.replace(/"/g, '""')}"`).join(",");
         return new Promise(function(resolver, rejecter) {
           connection.query(`set search_path to ${path5}`, function(err) {
             if (err) return rejecter(err);
@@ -32541,12 +32547,13 @@ var require_mysql_querycompiler = __commonJS({
         }
         this._emptyInsertValue = "() values ()";
       }
-      // Compiles an `delete` allowing comments
+      // Compiles a `delete` query, allowing comments and LIMIT.
       del() {
         const sql = super.del();
         if (sql === "") return sql;
         const comments = this.comments();
-        return (comments === "" ? "" : comments + " ") + sql;
+        const limit = this.limit();
+        return (comments === "" ? "" : comments + " ") + sql + (limit ? ` ${limit}` : "");
       }
       // Compiles an `insert` query, allowing for multiple
       // inserts using a single query statement.
@@ -32733,6 +32740,10 @@ var require_mysql_querycompiler = __commonJS({
       onJsonPathEquals(clause) {
         return this._onJsonPathEquals("json_extract", clause);
       }
+    };
+    QueryCompiler_MySQL.prototype.invalidClauses = {
+      delete: ["having"],
+      truncate: ["where", "having", "limit"]
     };
     module2.exports = QueryCompiler_MySQL;
   }
@@ -36516,7 +36527,7 @@ var require_main = __commonJS({
             lastError = e;
           }
         }
-        _log(`injecting env (${keysCount}) from ${shortPaths.join(",")} ${dim(`// tip: ${_getRandomTip()}`)}`);
+        _log(`injected env (${keysCount}) from ${shortPaths.join(",")} ${dim(`// tip: ${_getRandomTip()}`)}`);
       }
       if (lastError) {
         return { parsed: parsedAll, error: lastError };
@@ -58310,7 +58321,7 @@ function findSolutionRoot(startDir) {
 }
 function registerSolutionRoot(rootPath) {
   try {
-    const registryPath = path.join(process.env.HOME || ".", ".dbcanvas_registry.json");
+    const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || ".", ".dbcanvas_registry.json");
     const registryDir = path.dirname(registryPath);
     if (!fs.existsSync(registryDir))
       fs.mkdirSync(registryDir, { recursive: true });
@@ -58327,7 +58338,7 @@ function registerSolutionRoot(rootPath) {
 }
 function getRegisteredProjects() {
   try {
-    const registryPath = path.join(process.env.HOME || ".", ".dbcanvas_registry.json");
+    const registryPath = path.join(process.env.HOME || process.env.USERPROFILE || ".", ".dbcanvas_registry.json");
     if (fs.existsSync(registryPath)) {
       const data = JSON.parse(fs.readFileSync(registryPath, "utf8"));
       if (Array.isArray(data) && data.length > 0 && typeof data[0] === "string") {
@@ -59255,7 +59266,18 @@ setInterval(() => {
   }
 }, 5 * 60 * 1e3).unref();
 function getActiveContext(projectPathOverride) {
-  let searchPath = projectPathOverride || process.cwd();
+  let argPath = process.argv.find((arg) => arg.startsWith("--project-path="))?.split("=")[1];
+  if (!argPath) {
+    const idx = process.argv.indexOf("--project-path");
+    if (idx !== -1 && idx + 1 < process.argv.length) {
+      argPath = process.argv[idx + 1];
+    }
+  }
+  let searchPath = projectPathOverride || argPath || process.cwd();
+  const effectivePath = projectPathOverride || argPath;
+  if (effectivePath) {
+    registerSolutionRoot(effectivePath);
+  }
   if (searchPath === "/" || searchPath === process.env.HOME) {
     searchPath = path4.resolve(path4.dirname((0, import_url2.fileURLToPath)(__filename_url__)), "..");
   }
@@ -59267,7 +59289,7 @@ function getActiveContext(projectPathOverride) {
   return {
     activeUrl,
     config: currentConfig,
-    projectRoot: currentConfig?.solutionRoot || searchPath
+    projectRoot: argPath || currentConfig?.solutionRoot || searchPath
   };
 }
 function maskPassword(url2) {

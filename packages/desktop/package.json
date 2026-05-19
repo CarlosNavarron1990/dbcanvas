@@ -88,8 +88,10 @@
         }
       ],
       "icon": "assets/icon.ico",
-      "artifactName": "DBCanvas-Setup.${ext}"
+      "artifactName": "DBCanvas-Setup.${ext}",
+      "signAndEditExecutable": false
     },
+    "forceCodeSigning": false,
     "nsis": {
       "oneClick": false,
       "perMachine": false,
