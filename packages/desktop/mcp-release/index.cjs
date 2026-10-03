@@ -58134,11 +58134,11 @@ async function getProcedureDependencies(db, name) {
         const code = await getProcedureCode(db, name);
         if (code && code !== "Not found") {
           const regexDeps = getProcedureDependenciesFromSql(code);
-          return regexDeps.map((tbl) => ({
+          return regexDeps.map((d) => ({
             referencing_name: name,
-            referenced_name: tbl,
+            referenced_name: d.name,
             referencing_type: "SQL_STORED_PROCEDURE",
-            referenced_type: "USER_TABLE"
+            referenced_type: d.type === "PROCEDURE" ? "SQL_STORED_PROCEDURE" : "USER_TABLE"
           }));
         }
       }
@@ -58149,24 +58149,39 @@ async function getProcedureDependencies(db, name) {
   return [];
 }
 function getProcedureDependenciesFromSql(sql) {
-  const tableMatches = /* @__PURE__ */ new Set();
-  const patterns = [
-    /(?:FROM|JOIN|UPDATE|INTO|TRUNCATE TABLE)\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi,
+  const dependencies = /* @__PURE__ */ new Map();
+  const tablePatterns = [
+    /(?:FROM|JOIN|UPDATE|INTO|TRUNCATE TABLE)\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi
+  ];
+  const procPatterns = [
     /EXEC(?:UTE)?\s+(?:\[?(\w+)\]?\.)?\[?(\w+)\]?/gi
   ];
-  for (const pattern of patterns) {
+  const blackList = ["SELECT", "WHERE", "INSERT", "GROUP", "ORDER", "HAVING", "LEFT", "RIGHT", "INNER", "OUTER", "JOIN", "FETCH", "OFFSET", "CASE", "WHEN", "THEN", "ELSE", "END", "FOR", "OPEN", "CLOSE", "DEOCLARE", "DECLARE", "SET", "BEGIN", "TRY", "CATCH", "TRAN", "TRANSACTION", "COMMIT", "ROLLBACK"];
+  for (const pattern of tablePatterns) {
     let match;
     while ((match = pattern.exec(sql)) !== null) {
       const schema = match[1];
       const table = match[2];
-      const blackList = ["SELECT", "WHERE", "INSERT", "GROUP", "ORDER", "HAVING", "LEFT", "RIGHT", "INNER", "OUTER", "JOIN", "FETCH", "OFFSET", "CASE", "WHEN", "THEN", "ELSE", "END", "FOR", "OPEN", "CLOSE", "DEOCLARE", "DECLARE", "SET"];
       if (table && !table.startsWith("@") && !blackList.includes(table.toUpperCase())) {
         const fullName = schema ? `${schema}.${table}` : table;
-        tableMatches.add(fullName);
+        if (!dependencies.has(fullName)) {
+          dependencies.set(fullName, "TABLE");
+        }
       }
     }
   }
-  return Array.from(tableMatches);
+  for (const pattern of procPatterns) {
+    let match;
+    while ((match = pattern.exec(sql)) !== null) {
+      const schema = match[1];
+      const proc = match[2];
+      if (proc && !proc.startsWith("@") && !blackList.includes(proc.toUpperCase())) {
+        const fullName = schema ? `${schema}.${proc}` : proc;
+        dependencies.set(fullName, "PROCEDURE");
+      }
+    }
+  }
+  return Array.from(dependencies.entries()).map(([name, type]) => ({ name, type }));
 }
 
 // ../core/build/discovery.js
@@ -58190,12 +58205,15 @@ function tryParseConfigFile(configPath, fileName, solutionRoot) {
       const matches = [...content.matchAll(/connectionString="([^"]+)"/gi)];
       for (const match of matches) {
         let connStr = match[1];
-        if (connStr.startsWith("metadata=")) {
-          const inner = connStr.match(/provider connection string=&quot;([^&]+)&quot;/i) || connStr.match(/provider connection string="([^"]+)"/i);
+        const unescaped = connStr.replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+        if (unescaped.startsWith("metadata=")) {
+          const inner = unescaped.match(/provider connection string="([^"]+)"/i);
           if (inner)
             connStr = inner[1];
           else
             continue;
+        } else {
+          connStr = unescaped;
         }
         if (connStr.includes("Data Source=") || connStr.includes("data source=") || connStr.includes("Server=")) {
           return { connectionString: connStr, source: `${fileName} (${configPath})`, configDir: path.dirname(configPath), solutionRoot, filePath: configPath, lastModified: stats.mtime };
@@ -58259,12 +58277,24 @@ function discoverConnectionString(overridePath) {
           if (!entry.isDirectory() || entry.name.startsWith(".") || entry.name === "node_modules")
             continue;
           const subDir = path.join(solutionRoot, entry.name);
-          for (const fileName of COMMON_CONFIG_FILES) {
+          for (const fileName of [...COMMON_ENV_FILES, ...COMMON_CONFIG_FILES]) {
             const configPath = path.join(subDir, fileName);
             if (fs.existsSync(configPath)) {
-              const result = tryParseConfigFile(configPath, fileName, solutionRoot);
-              if (result)
-                return result;
+              if (COMMON_ENV_FILES.includes(fileName)) {
+                try {
+                  const stats = fs.statSync(configPath);
+                  const envConfig = dotenv.parse(fs.readFileSync(configPath));
+                  const connectionString = envConfig.DATABASE_URL || envConfig.DB_CONNECTION || envConfig.CONNECTION_STRING || envConfig.DB_URL;
+                  if (connectionString) {
+                    return { connectionString, source: `${fileName} (${configPath})`, configDir: path.dirname(configPath), solutionRoot, filePath: configPath, lastModified: stats.mtime };
+                  }
+                } catch (e) {
+                }
+              } else {
+                const result = tryParseConfigFile(configPath, fileName, solutionRoot);
+                if (result)
+                  return result;
+              }
             }
           }
         }
@@ -58406,6 +58436,8 @@ var import_fs = __toESM(require("fs"), 1);
 var import_path = __toESM(require("path"), 1);
 var LocalStore = class {
   dir;
+  nodesCache = null;
+  edgesCache = null;
   constructor(dbcanvasDir) {
     this.dir = dbcanvasDir;
     if (!import_fs.default.existsSync(this.dir)) {
@@ -58430,40 +58462,48 @@ var LocalStore = class {
   }
   // ── Nodes ─────────────────────────────────────────────────────────────────
   getNodes(type) {
-    const nodes = this.read("nodes");
-    return type ? nodes.filter((n) => n.type === type) : nodes;
+    if (!this.nodesCache)
+      this.nodesCache = this.read("nodes");
+    return type ? this.nodesCache.filter((n) => n.type === type) : this.nodesCache;
   }
   upsertNode(node) {
-    const nodes = this.read("nodes");
-    const i = nodes.findIndex((n) => n.id === node.id);
+    if (!this.nodesCache)
+      this.nodesCache = this.read("nodes");
+    const i = this.nodesCache.findIndex((n) => n.id === node.id);
     const record2 = { ...node, updated_at: (/* @__PURE__ */ new Date()).toISOString() };
     if (i >= 0) {
-      nodes[i] = record2;
+      this.nodesCache[i] = record2;
     } else {
-      nodes.push(record2);
+      this.nodesCache.push(record2);
     }
-    this.write("nodes", nodes);
+    this.write("nodes", this.nodesCache);
   }
   nodeCount() {
-    return this.read("nodes").length;
+    if (!this.nodesCache)
+      this.nodesCache = this.read("nodes");
+    return this.nodesCache.length;
   }
   // ── Edges ─────────────────────────────────────────────────────────────────
   getEdges(nodeIds) {
-    const edges = this.read("edges");
+    if (!this.edgesCache)
+      this.edgesCache = this.read("edges");
     if (!nodeIds)
-      return edges;
-    return edges.filter((e) => nodeIds.includes(e.source) || nodeIds.includes(e.target));
+      return this.edgesCache;
+    return this.edgesCache.filter((e) => nodeIds.includes(e.source) || nodeIds.includes(e.target));
   }
   upsertEdge(edge) {
-    const edges = this.read("edges");
-    const exists = edges.some((e) => e.source === edge.source && e.target === edge.target && e.type === edge.type);
+    if (!this.edgesCache)
+      this.edgesCache = this.read("edges");
+    const exists = this.edgesCache.some((e) => e.source === edge.source && e.target === edge.target && e.type === edge.type);
     if (!exists) {
-      edges.push(edge);
-      this.write("edges", edges);
+      this.edgesCache.push(edge);
+      this.write("edges", this.edgesCache);
     }
   }
   edgeCount() {
-    return this.read("edges").length;
+    if (!this.edgesCache)
+      this.edgesCache = this.read("edges");
+    return this.edgesCache.length;
   }
   // ── Shadow tables (simple JSON maps) ──────────────────────────────────────
   getShadowRows(tableName) {
@@ -58474,6 +58514,25 @@ var LocalStore = class {
   }
   hasShadowTable(tableName) {
     return import_fs.default.existsSync(this.filePath(`shadow_${tableName}`));
+  }
+  // ── Table schemas (cached column definitions) ────────────────────────────
+  getAllSchemas() {
+    const p = this.filePath("schemas");
+    try {
+      if (import_fs.default.existsSync(p))
+        return JSON.parse(import_fs.default.readFileSync(p, "utf8"));
+    } catch {
+    }
+    return {};
+  }
+  getSchema(tableName) {
+    return this.getAllSchemas()[tableName] || null;
+  }
+  hasSchema(tableName) {
+    return tableName in this.getAllSchemas();
+  }
+  setAllSchemas(schemas) {
+    import_fs.default.writeFileSync(this.filePath("schemas"), JSON.stringify(schemas, null, 2));
   }
   // ── Captures ──────────────────────────────────────────────────────────────
   saveCapture(capture) {
@@ -58521,6 +58580,24 @@ function closeAllStores() {
 
 // ../core/build/discovery.js
 var log = createChildLogger("discovery");
+function getNodeIdFromType(name, typeDesc) {
+  const cleanName = name.replace(/[\[\]]/g, "");
+  const upperName = cleanName.toUpperCase();
+  const parts = upperName.split(".");
+  const baseName = parts[parts.length - 1];
+  if (baseName.startsWith("SP_") || baseName.startsWith("USP_"))
+    return `sp:${name}`;
+  if (baseName.startsWith("VW_"))
+    return `view:${name}`;
+  const type = typeDesc?.toUpperCase() || "";
+  if (type.includes("PROCEDURE") || type === "P")
+    return `sp:${name}`;
+  if (type.includes("VIEW") || type === "V")
+    return `view:${name}`;
+  if (type.includes("FUNCTION") || type === "FN" || type === "TF" || type === "IF")
+    return `sp:${name}`;
+  return `table:${name}`;
+}
 async function closeAllLocalDbs() {
   closeAllStores();
 }
@@ -58559,18 +58636,24 @@ function getLocalDb(projectPathOverride) {
   log.info({ dbDir }, "Using discovery store");
   return getStore(dbDir);
 }
-async function syncDiscovery(remoteDb, projectPathOverride) {
+async function syncDiscovery(remoteDb, projectPathOverride, onProgress) {
   const store = getLocalDb(projectPathOverride);
+  const dbDir = resolveDbcanvasDir(projectPathOverride);
+  const procDir = import_path2.default.join(dbDir, "procedures");
+  if (!import_fs2.default.existsSync(procDir))
+    import_fs2.default.mkdirSync(procDir, { recursive: true });
   const tables = await remoteDb.raw(remoteDb.client.config.client === "mssql" ? "SELECT name FROM sys.tables" : "SELECT table_name as name FROM information_schema.tables WHERE table_schema = 'public'");
   const tableRows = remoteDb.client.config.client === "pg" ? tables.rows : tables;
   for (const row of tableRows) {
     store.upsertNode({ id: `table:${row.name}`, name: row.name, type: "TABLE" });
   }
+  onProgress?.({ phase: "tables", done: tableRows.length, total: tableRows.length });
   const views = await remoteDb.raw(remoteDb.client.config.client === "mssql" ? "SELECT name FROM sys.views" : "SELECT table_name as name FROM information_schema.views WHERE table_schema = 'public'");
   const viewRows = remoteDb.client.config.client === "pg" ? views.rows : views;
   for (const row of viewRows) {
     store.upsertNode({ id: `view:${row.name}`, name: row.name, type: "VIEW" });
   }
+  onProgress?.({ phase: "views", done: viewRows.length, total: viewRows.length });
   const fks = await getTableForeignKeys(remoteDb);
   for (const fk of fks) {
     store.upsertEdge({
@@ -58580,16 +58663,79 @@ async function syncDiscovery(remoteDb, projectPathOverride) {
       label: fk.constraint_name
     });
   }
+  onProgress?.({ phase: "fks", done: fks.length, total: fks.length });
   const deps = await getProcedureDependencies(remoteDb);
   for (const dep of deps) {
-    store.upsertNode({ id: `sp:${dep.referencing_name}`, name: dep.referencing_name, type: "PROCEDURE" });
+    const sourceId = `sp:${dep.referencing_name}`;
+    const targetId = getNodeIdFromType(dep.referenced_name, dep.referenced_type);
+    store.upsertNode({ id: sourceId, name: dep.referencing_name, type: "PROCEDURE" });
+    if (targetId.startsWith("sp:")) {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: "PROCEDURE" });
+    } else if (targetId.startsWith("view:")) {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: "VIEW" });
+    } else {
+      store.upsertNode({ id: targetId, name: dep.referenced_name, type: "TABLE" });
+    }
     store.upsertEdge({
-      source: `sp:${dep.referencing_name}`,
-      target: `table:${dep.referenced_name}`,
+      source: sourceId,
+      target: targetId,
       type: "USAGE"
     });
   }
-  return { nodes: store.nodeCount(), edges: store.edgeCount() };
+  onProgress?.({ phase: "deps", done: deps.length, total: deps.length });
+  const tablesAndViews = [
+    ...tableRows.map((r) => ({ name: r.name, type: "TABLE" })),
+    ...viewRows.map((r) => ({ name: r.name, type: "VIEW" }))
+  ];
+  const schemas = store.getAllSchemas();
+  let schemasCached = 0;
+  const totalSchemas = tablesAndViews.length;
+  for (let i = 0; i < tablesAndViews.length; i++) {
+    const { name } = tablesAndViews[i];
+    if (schemas[name])
+      continue;
+    try {
+      const columns = await getTableColumns(remoteDb, name);
+      schemas[name] = columns;
+      schemasCached++;
+    } catch (e) {
+      log.warn({ table: name, err: e.message }, "failed to fetch schema");
+    }
+    if ((i + 1) % 50 === 0)
+      store.setAllSchemas(schemas);
+    onProgress?.({ phase: "schemas", done: i + 1, total: totalSchemas, current: name });
+  }
+  store.setAllSchemas(schemas);
+  const spNodes = store.getNodes("PROCEDURE");
+  let spCodeCached = 0;
+  const totalSps = spNodes.length;
+  for (let i = 0; i < spNodes.length; i++) {
+    const sp = spNodes[i];
+    const fileName = sp.name.replace(/\./g, "_");
+    const mdPath = import_path2.default.join(procDir, `${fileName}.md`);
+    const altPath = import_path2.default.join(procDir, `${sp.name}.md`);
+    if (import_fs2.default.existsSync(mdPath) || import_fs2.default.existsSync(altPath))
+      continue;
+    try {
+      const code = await getProcedureCode(remoteDb, sp.name);
+      if (code && code !== "Not found") {
+        const md = `# ${sp.name}
+
+\`\`\`sql
+${code}
+\`\`\`
+`;
+        import_fs2.default.writeFileSync(mdPath, md);
+        spCodeCached++;
+      }
+    } catch (e) {
+      log.warn({ sp: sp.name, err: e.message }, "failed to fetch SP code");
+    }
+    onProgress?.({ phase: "sp-code", done: i + 1, total: totalSps, current: sp.name });
+  }
+  onProgress?.({ phase: "done", done: 0, total: 0 });
+  log.info({ nodes: store.nodeCount(), edges: store.edgeCount(), schemasCached, spCodeCached }, "sync complete");
+  return { nodes: store.nodeCount(), edges: store.edgeCount(), schemasCached, spCodeCached };
 }
 async function getDiscoveryGraph(projectPathOverride, options) {
   const store = getLocalDb(projectPathOverride);
@@ -58629,10 +58775,17 @@ async function discoverObject(remoteDb, name, type, projectPathOverride) {
     store.upsertNode({ id: `sp:${name}`, name, type: "PROCEDURE" });
     const spDeps = await getProcedureDependencies(remoteDb, name);
     for (const dep of spDeps) {
-      store.upsertNode({ id: `table:${dep.referenced_name}`, name: dep.referenced_name, type: "TABLE" });
-      store.upsertEdge({ source: `sp:${name}`, target: `table:${dep.referenced_name}`, type: "USAGE" });
-      await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => {
-      });
+      const targetId = getNodeIdFromType(dep.referenced_name, dep.referenced_type);
+      if (targetId.startsWith("sp:")) {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: "PROCEDURE" });
+      } else if (targetId.startsWith("view:")) {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: "VIEW" });
+      } else {
+        store.upsertNode({ id: targetId, name: dep.referenced_name, type: "TABLE" });
+        await ensureShadowTable(remoteDb, dep.referenced_name, projectPathOverride).catch(() => {
+        });
+      }
+      store.upsertEdge({ source: `sp:${name}`, target: targetId, type: "USAGE" });
     }
   } else if (type === "TABLE") {
     store.upsertNode({ id: `table:${name}`, name, type: "TABLE" });

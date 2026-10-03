@@ -20,6 +20,18 @@ function hasElectronBridge(): boolean {
   return typeof window !== 'undefined' && !!(window as any).dbcanvas?.startLogin;
 }
 
+// ============================================================================
+// CONFIGURACIÓN DE AUTENTICACIÓN / LOGIN
+// Cambiar AUTH_REQUIRED a true cuando se desee reactivar el login obligatorio.
+// ============================================================================
+export const AUTH_REQUIRED = false;
+
+const FREE_UNLOCKED_SESSION = {
+  token: 'free-mode-unlocked',
+  user: { id: 'local-user', email: 'developer@local', name: 'DBCanvas' },
+  license: { key: 'UNLOCKED-FREE-MODE', tier: 'pro' },
+};
+
 const App: React.FC = () => {
   const { viewMode, selectedNode, theme, fetchGraph, fetchProjects, fetchStatus, selectNode, setActiveTab, setLastSignal, setSession, setUpdateStatus } = useStore();
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('dbcanvas-onboarded'));
@@ -34,35 +46,65 @@ const App: React.FC = () => {
     const electron = hasElectronBridge();
     console.log('[DBCanvas] hasElectronBridge:', electron, 'window.dbcanvas:', !!w.dbcanvas, 'startLogin:', !!w.dbcanvas?.startLogin);
 
-    if (!electron) {
-      // Not in Electron — skip login
-      console.log('[DBCanvas] Not in Electron, skipping login');
-      setLoginChecked(true);
-      return;
+    if (!AUTH_REQUIRED) {
+      console.log('[DBCanvas] Modo libre activado (Login desactivado)');
+      if (electron && w.dbcanvas?.getSession) {
+        w.dbcanvas.getSession().then((session: any) => {
+          if (session?.token) {
+            setSession(session);
+            localStorage.setItem('dbcanvas-session', JSON.stringify(session));
+          } else {
+            setSession(FREE_UNLOCKED_SESSION);
+          }
+          setLoginChecked(true);
+        }).catch(() => {
+          setSession(FREE_UNLOCKED_SESSION);
+          setLoginChecked(true);
+        });
+      } else {
+        const saved = localStorage.getItem('dbcanvas-session');
+        if (saved) {
+          try {
+            setSession(JSON.parse(saved));
+          } catch {
+            setSession(FREE_UNLOCKED_SESSION);
+          }
+        } else {
+          setSession(FREE_UNLOCKED_SESSION);
+        }
+        setLoginChecked(true);
+      }
+      setShowLogin(false);
+    } else {
+      if (!electron) {
+        // Not in Electron — skip login
+        console.log('[DBCanvas] Not in Electron, skipping login');
+        setLoginChecked(true);
+      } else {
+        console.log('[DBCanvas] In Electron, checking session...');
+        w.dbcanvas.getSession().then((session: any) => {
+          console.log('[DBCanvas] getSession result:', session);
+          if (session?.token) {
+            setSession(session);
+            localStorage.setItem('dbcanvas-session', JSON.stringify(session));
+          } else {
+            localStorage.removeItem('dbcanvas-session');
+            setShowLogin(true);
+          }
+          setLoginChecked(true);
+        }).catch((err: any) => {
+          console.error('[DBCanvas] getSession error:', err);
+          setShowLogin(true);
+          setLoginChecked(true);
+        });
+      }
     }
 
-    console.log('[DBCanvas] In Electron, checking session...');
-    w.dbcanvas.getSession().then((session: any) => {
-      console.log('[DBCanvas] getSession result:', session);
-      if (session?.token) {
-        setSession(session);
-        localStorage.setItem('dbcanvas-session', JSON.stringify(session));
-      } else {
-        localStorage.removeItem('dbcanvas-session');
-        setShowLogin(true);
-      }
-      setLoginChecked(true);
-    }).catch((err: any) => {
-      console.error('[DBCanvas] getSession error:', err);
-      setShowLogin(true);
-      setLoginChecked(true);
-    });
-
     // Listen for auto-update events
-    const cleanupAvailable = w.dbcanvas.onUpdateAvailable?.((info: any) => {
+    const cleanupAvailable = w.dbcanvas?.onUpdateAvailable?.((info: any) => {
       setUpdateStatus('available', info?.version);
     });
-    const cleanupDownloaded = w.dbcanvas.onUpdateDownloaded?.((info: any) => {
+    const cleanupDownloaded = w.dbcanvas?.onUpdateDownloaded?.((info: any) => {
       setUpdateStatus('downloaded', info?.version);
     });
     return () => {
@@ -133,7 +175,7 @@ const App: React.FC = () => {
     return <div className="login-screen"><div className="login-card"><h1>DBCanvas</h1><p>Loading...</p></div></div>;
   }
 
-  if (showLogin) {
+  if (AUTH_REQUIRED && showLogin) {
     return <LoginScreen
       onLogin={(s) => {
         setSession(s);
